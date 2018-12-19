@@ -128,6 +128,36 @@ def esr_frequencies_ensemble(B_lab, gs=27.969, muB=1, hbar=1, Dgs=2.87):
     # N is the number of NV families
     return np.moveaxis(f, 0, 1)
 
+
+def esr_contrast_ensemble(B_lab, k12=10, k13=0, beta=1, gs=27.969, muB=1, hbar=1, Dgs=2.87):
+    """
+    calculates the esr contrast for the four NV families for a given magnetic field in the lab frame
+
+    B_lab: magnetic field in the lab frame (N x 3) matrix
+
+    returns the esr contrast for all 4 NV families as M x N array, where
+        M is the number of magnetic fields
+        N = 4 is the number of NV families
+    """
+
+    C = []
+    # get b field in cartesian coordinates
+
+    for i in range(4):
+        # get the off axis and on axis field for NV_i
+        BNV = B_fields_in_NV_frame(B_lab,i)
+        # calculate the ESR freq. for NV_i
+        Co = photoluminescence_contrast(BNV, k12=k12, k13=k13, beta=beta)
+
+        C.append(Co)
+
+
+    # rearrange so that we return a M x N x 2 array
+    # M is the number of magnetic fields
+    # N is the number of NV families
+    return np.moveaxis(C, 0, 1)
+
+
 def hamiltonian_nv_spin1(Bfield, gs=27.969, muB=1, hbar=1, D=2.87):
     """
     The hamiltonian for a spin 1 system, this hamiltonian describes the NV gound state as well as the excited state
