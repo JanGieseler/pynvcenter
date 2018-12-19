@@ -118,7 +118,6 @@ def esr_frequencies_ensemble(B_lab, gs=27.969, muB=1, hbar=1, Dgs=2.87):
         BNV = B_fields_in_NV_frame(B_lab,i)
         # calculate the ESR freq. for NV_i
         fo = esr_frequencies(BNV, gs=gs, muB=muB, hbar=hbar, Dgs=Dgs)
-
         f.append(fo)
 
     # return np.array(f)
@@ -126,14 +125,17 @@ def esr_frequencies_ensemble(B_lab, gs=27.969, muB=1, hbar=1, Dgs=2.87):
     # rearrange so that we return a M x N x 2 array
     # M is the number of magnetic fields
     # N is the number of NV families
+
+
     return np.moveaxis(f, 0, 1)
 
 
-def esr_contrast_ensemble(B_lab, k12=10, k13=0, beta=1, gs=27.969, muB=1, hbar=1, Dgs=2.87):
+def esr_contrast_ensemble(B_lab, k_MW=10, beta=1, gs=27.969, muB=1, hbar=1, Dgs=2.87):
     """
     calculates the esr contrast for the four NV families for a given magnetic field in the lab frame
 
     B_lab: magnetic field in the lab frame (N x 3) matrix
+    k_MW: is the Rabi frequency applied to the ESR transition
 
     returns the esr contrast for all 4 NV families as M x N array, where
         M is the number of magnetic fields
@@ -147,10 +149,10 @@ def esr_contrast_ensemble(B_lab, k12=10, k13=0, beta=1, gs=27.969, muB=1, hbar=1
         # get the off axis and on axis field for NV_i
         BNV = B_fields_in_NV_frame(B_lab,i)
         # calculate the ESR freq. for NV_i
-        Co = photoluminescence_contrast(BNV, k12=k12, k13=k13, beta=beta)
+        Cm = photoluminescence_contrast(BNV, k12=k_MW, k13=0, beta=beta)
+        Cp = photoluminescence_contrast(BNV, k12=0, k13=k_MW, beta=beta)
 
-        C.append(Co)
-
+        C.append(np.vstack([Cm, Cp]).T)
 
     # rearrange so that we return a M x N x 2 array
     # M is the number of magnetic fields
