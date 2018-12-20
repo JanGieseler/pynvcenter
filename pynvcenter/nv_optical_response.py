@@ -1000,10 +1000,10 @@ def sort_esr_frequencies(freq_data, permutate_all = True, verbose = False):
         else:
             # for a single index return the list
             if len(np.shape(index)) == 0:
-                return list(freq[0:Nfreq / 2]) + list(list(permutations(freq[Nfreq / 2:]))[index])
+                return list(freq[0:Nfreq // 2]) + list(list(permutations(freq[Nfreq // 2:]))[index])
             # for a list of indecies loop over all indecies and return a list for each
             else:
-                return [list(freq[0:Nfreq / 2]) + list(list(permutations(freq[Nfreq / 2:]))[i]) for i in index]
+                return [list(freq[0:Nfreq // 2]) + list(list(permutations(freq[Nfreq // 2:]))[i]) for i in index]
 
     def calc_err_freq(freq0, freqs_perm):
         """
