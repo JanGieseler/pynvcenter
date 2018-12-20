@@ -873,6 +873,280 @@ def fit_err_fun(x, *argv):
 
     return err
 
+def get_r_dr(nv_locations, magnet_diam, magnet_center):
+    """
+
+    use for line data, nv_locations are along a line
+
+    calculates the distance to the magnet and the distance between points
+    nv_locations: matrix of shape N x 2, where N is the number of NV positions
+    magnet_center: distance from first point in nv_locations to magnet center (must be same units as nv_location!!)
+    magnet_diam: magnet diameter (must be same units as nv_location!!)
+    """
+    r = np.array([np.sqrt(np.sum((pt - nv_locations[0]) ** 2)) for pt in nv_locations])
+    r = r + magnet_center
+    # take into account that we are at least a radius above the magnet
+    r = np.sqrt(r**2+magnet_diam/2)
+    dr = np.mean(np.diff(r))
+
+    return r, dr
+
+
+def get_theta_dr(nv_locations, method='radius'):
+    """
+
+    use for ring data, i.e. nv_locations are on a ring
+
+    calculates the angles theta and the distance between points
+    nv_locations: matrix of shape N x 2, where N is the number of NV positions
+    method: calculate dr based on differences (diff) or based on the radius (radius)
+        string 'diff' or 'radius'
+
+
+    :returns
+        theta = angles on ring
+        radius = radius of ring
+        dr = distance between points on ring
+    """
+    mag_pos = np.mean(nv_locations, 0)
+    # radius of circle (in um)
+    radius = np.mean(np.sqrt(np.sum((nv_locations - mag_pos) ** 2, 1)))
+
+    # we measured on a ring, so we calculate the angle for each measurement
+    theta = np.linspace(0, 360, len(nv_locations))
+
+    if method == 'diff':
+        # calculate differential distance between points
+        x = np.sum(np.diff(nv_locations - mag_pos, 0) ** 2, 1)
+        np.mean(x), np.std(x)
+        dr = np.mean(x)
+    #         print('differential from differences:', dr)
+    elif method == 'radius':
+        # differential theta (spacing betweent thetas)
+        dtheta = np.mean(np.diff(theta)) * np.pi / 180
+        # calculate the distance between measurements, needed for calculation f gradients
+        dr = radius * dtheta
+    #         print('differential from radius:', dr)
+    else:
+        print("unknown method try 'diff' or 'radius'")
+
+    return theta, dr
+
+
+def sort_esr_frequencies(freq_data, permutate_all = True, verbose = False):
+    """
+    sorts the frequencies from the measurement by trying all different permutations and minimizing the error in the total field,
+    while also maximizing the frequency overlap from one measurement to the next.
+    freq_data: frequency data, array with dimensions Ndata (number of datasets), Nfreq (number of frequencies)
+    verbose: print information along the way
+
+    todo: implement also maximum overlap of the slope to keep track of upper and lower NV frequency
+
+    permutate_all:
+        TRUE: permutate all combinations of frequencies (7! = 5040 for 8 frequencies )
+        FALSE: permutate only half of combinations of frequencies (4! = 24 for 4 frequencies)
+
+    :returns
+        freqs_sorted: sorted frequencies
+        perm_index: index of permutation that has to be applied to freq_data to get freqs_sorted
+
+    """
+    freq_data = np.array(freq_data)
+
+    if len(np.shape(freq_data)) == 2:
+        Ndata, Nfreq = np.shape(freq_data)
+    perm_index = []
+    freqs_sorted = []
+
+    def calc_err(freq):
+        """
+        calculates the error in B field for a give collection of frequencies
+        """
+        # calculate the fields for each family
+        Bs = calc_bfields_esr_ensemble_mag(freq)[1]
+        # calculate the total field
+        Babs = np.sqrt(np.sum(Bs ** 2, axis=1))
+        # calculate the error
+        # err = np.std(Babs) / np.mean(Babs)
+        err = np.std(Babs)
+
+        return err
+
+    def get_perm_freq(freq, index):
+        """
+        returns the permutation of frequencies, that corresponds to permutation index "index"
+        note that we only permutate the last half of the array, since we are looking for NV pairs
+
+        freq = vector of frequencies (typically length = 8 for all four NV families)
+        index = single integer or a list of integers
+        """
+        Nfreq = len(freq)
+
+        if permutate_all:
+            # # for a single index return the list
+            # if len(np.shape(index)) == 0:
+            #     return list(permutations(freq))[index]
+            # # for a list of indecies loop over all indecies and return a list for each
+            # else:
+            #     return [list(permutations(freq))[i] for i in index]
+            # for a single index return the list
+            if len(np.shape(index)) == 0:
+                return list([freq[0]]) + list(list(permutations(freq[1:]))[index])
+            # for a list of indecies loop over all indecies and return a list for each
+            else:
+                return [list([freq[0]]) + list(list(permutations(freq[1:]))[i]) for i in index]
+        else:
+            # for a single index return the list
+            if len(np.shape(index)) == 0:
+                return list(freq[0:Nfreq / 2]) + list(list(permutations(freq[Nfreq / 2:]))[index])
+            # for a list of indecies loop over all indecies and return a list for each
+            else:
+                return [list(freq[0:Nfreq / 2]) + list(list(permutations(freq[Nfreq / 2:]))[i]) for i in index]
+
+    def calc_err_freq(freq0, freqs_perm):
+        """
+        calculates the error in the frequencies freq_perm (e.g. N x 8) matrix
+        and the frequencies freq_0 (e.g. vector of length 8)
+        """
+        Nperm = len(freqs_perm)
+        err = np.sum((np.array(freqs_perm) - np.ones([Nperm, 1]) * np.array([freq0])) ** 2, 1)
+        # normalize err
+        err = err / np.sum(np.array(freq0)) ** 2
+
+        if verbose:
+            print(' ====== calc_err_freq: err =====')
+            print((np.shape(err)))
+
+            # print(np.shape(freqs_perm), np.shape(np.ones([Nperm, 1]) * np.array([freq0])))
+
+            print(['{:0.3e}'.format(err[k] / 1e9) for k in range(len(err))])
+
+        return err
+
+
+    for j, freq in enumerate(freq_data):
+        if verbose:
+            print(('>>>>>>>>>>>>> RUN <<<<<<<<<<<<<<<<', j))
+        # permutate over all four families to find the match that gives the lowest error
+        if permutate_all:
+            # errs = [calc_err(np.array(freq_perm))
+            #         for freq_perm in list(permutations(freq))]
+            # concat the first 1 freq and the 7 permutated freqs
+            errs = [calc_err(np.array([freq[0]] + list(freq_perm)))
+                    for freq_perm in list(permutations(freq[1:]))]
+        else:
+            # concat the first 4 freq and the 4 permutated freqs
+            errs = [calc_err(np.array(list(freq[0:Nfreq / 2]) + list(freq_perm)))
+                    for freq_perm in list(permutations(freq[Nfreq / 2:]))]
+
+        perm_indecies_min = np.where(errs == min(errs))[0]  # permutation indecies that minimize the error
+
+        if verbose:
+            print(' ====== perm_indecies_min =====')
+            print(perm_indecies_min)
+
+        #         print(perm_indecies_min)
+        if len(perm_index) == 0:
+            # there mightbe several permutations with the same error, we take the first for the first set of freqs
+            freq_index_min = 0
+        else:
+            # if one of the indeces is the same as in the previous dataset,
+            # we take the one that minimizes the change in frequency
+            # frequencies corresponding to the permutations with the lowest error
+            freqs_perm_min = get_perm_freq(freq, perm_indecies_min)
+            # out of those permutations find the one that maximizes the freq. overlap
+            freq_index_min = np.argmin(calc_err_freq(freqs_sorted[-1], freqs_perm_min))
+
+
+        perm_index.append(perm_indecies_min[freq_index_min])
+        freqs_sorted.append(get_perm_freq(freq, perm_index[-1]))
+        if verbose:
+            print(' ====== original frequencies =====')
+            print(['{:0.3f}'.format(freq[k] / 1e9) for k in range(len(freq))])
+            # print(freq)
+            print(' ====== permutated frequencies =====')
+            # print(freqs_sorted[-1])
+            print(['{:0.3f}'.format(freqs_sorted[-1][k] / 1e9) for k in range(len(freqs_sorted[-1]))])
+
+    return freqs_sorted, perm_index
+
+def connect_esr_frequencies(esr_data, verbose=False):
+    """
+    order the esr_data such that the frequency overlap from one measurement to the next is maximized
+    (assuming that the data is continuous and assuming that the esr data is already in the right pairs, i.e.
+    the rows are of the form NV1_low, NV1_high, NV2_low, NV2_high etc.
+
+    run this after sorting with sort_esr_frequencies to ensure continuity of data
+
+    returns: the ordered frequency freq
+    :param esr_data: esr data of the form M x 2*N, where M is the number of measurements and N is the number of NV families
+
+    :param verbose: if true output more text
+    :return: continuous esr data
+    """
+    def order_frequencies(freq, freq_last):
+        """
+        order the freq such that the overlap with the previous set is maximized
+        Here we assume that the NVs are of the form
+            N x 2, where N is the number of NV families
+        or
+            vector of length 2*N, where frequencies from the same family are next to each other
+
+
+        freq: frequencies to be ordered
+        freq_last: last frequencies that are used as reference
+
+        returns: the ordered frequency freq
+
+        """
+
+        assert np.shape(freq) == np.shape(freq_last)
+        if verbose:
+            print(['{:0.3f}'.format(freq[k] / 1e9) for k in range(len(freq))])
+            print(['{:0.3f}'.format(freq_last[k] / 1e9) for k in range(len(freq_last))])
+
+        # if vector get into the desired form
+        if len(np.shape(freq)) == 1:
+            freq = np.reshape(freq, [len(freq) / 2, 2])
+            freq_last = np.reshape(freq_last, [len(freq_last) / 2, 2])
+
+        freq = np.sort(freq)
+        freq_last = np.sort(freq_last)
+        # find permutation family that minimizes frequency jumps
+        index_min = np.argmin([np.sum((freq_last - np.array(x)) ** 2) for x in list(permutations(freq))])
+
+        return np.reshape(list(permutations(freq))[index_min], len(freq) * 2)
+
+    # sort the first dataset such that
+    freq_last = esr_data[0]
+    freq_last = np.reshape(freq_last, [len(freq_last) / 2, 2])
+    freq_last = np.sort(freq_last)
+    freq_last = list(np.reshape(freq_last, len(freq_last) * 2))
+
+    esr_data_sorted = []
+    #     freq_last = esr_data[0]
+    for i in range(len(esr_data) - 1):
+        freq = esr_data[i + 1]
+        if verbose:
+            print(('==================', i))
+        esr_data_sorted.append(order_frequencies(freq, freq_last))
+
+        freq_last = esr_data_sorted[-1]
+
+    return np.array(esr_data_sorted)
+
+
+def magnetic_moment_and_Br_from_fit(dp, a, r, mu0=4 * np.pi * 1e-7):
+    """
+    calculate the magentic moment and magnetic surface field from the fit parameter dp
+    a: radius of magnet
+    r: distance between NV circle and center of magnet
+    """
+    V = 4 * np.pi / 3 * a ** 3
+    m = 4 * np.pi / mu0 * r ** 3 * dp
+    Br = m / V * mu0
+    return m, Br
+
 
 if __name__ == '__main__':
 
