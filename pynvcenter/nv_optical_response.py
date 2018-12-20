@@ -1038,8 +1038,8 @@ def sort_esr_frequencies(freq_data, permutate_all = True, verbose = False):
                     for freq_perm in list(permutations(freq[1:]))]
         else:
             # concat the first 4 freq and the 4 permutated freqs
-            errs = [calc_err(np.array(list(freq[0:Nfreq / 2]) + list(freq_perm)))
-                    for freq_perm in list(permutations(freq[Nfreq / 2:]))]
+            errs = [calc_err(np.array(list(freq[0:Nfreq // 2]) + list(freq_perm)))
+                    for freq_perm in list(permutations(freq[Nfreq // 2:]))]
 
         perm_indecies_min = np.where(errs == min(errs))[0]  # permutation indecies that minimize the error
 
