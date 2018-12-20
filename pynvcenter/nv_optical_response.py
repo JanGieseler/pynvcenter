@@ -1,6 +1,8 @@
 import numpy as np
 import scipy.optimize as opt
 import itertools
+from itertools import permutations
+
 
 # spin 1 matrices
 Sx = np.matrix([
