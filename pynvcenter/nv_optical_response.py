@@ -562,12 +562,21 @@ def calc_bfields_esr_ensemble_mag(frequencies, verbose=False):
     frequencies: the esr frequencies, e.g. the frequencies obtained from a fit to ESR data. (in GHz)
     This is a N x 2 matrix, where N is the number of families and 2 are the two frequencies
 
+    of
+
+    This is a vector of length 2*N, where the ordering is NVa_low, NVa_high, NVb_low, NVb_high, etc
+
     returns:
         Babs:   the absolute value of the magnetic field
         Bs:     field along the NV axis and perpedicular
     """
 
-    assert np.shape(frequencies)[1] == 2
+    if len(np.shape(frequencies)) == 1:
+        # reshape to expected N x 2 format
+        frequencies = np.reshape(frequencies, (len(frequencies) // 2, 2))
+
+
+    assert len(frequencies.T) == 2
 
     if verbose:
         print(' ===== calc_bfields_esr_ensemble mag ==== ')
@@ -580,7 +589,7 @@ def calc_bfields_esr_ensemble_mag(frequencies, verbose=False):
     # calculate the abolute field
     Babs = np.sqrt(np.sum(Bs ** 2, axis=1))
     if verbose:
-        print('consistnecy check: total field should be the same for all families - std_dev', np.std(Babs)/np.mean(Babs))
+        print(('consistnecy check: total field should be the same for all families - std_dev', np.std(Babs)/np.mean(Babs)))
         if np.std(Babs)/np.mean(Babs)<1e-4:
             print('PASSED!!!')
         else:
@@ -588,6 +597,8 @@ def calc_bfields_esr_ensemble_mag(frequencies, verbose=False):
     Babs = np.mean(Babs)
 
     return Babs, Bs
+
+
 
 def calc_bfields_esr_ensemble_xyz(frequencies, verbose=False):
     """
@@ -957,6 +968,11 @@ def sort_esr_frequencies(freq_data, permutate_all = True, verbose = False):
 
     if len(np.shape(freq_data)) == 2:
         Ndata, Nfreq = np.shape(freq_data)
+    else:
+        Ndata, Nfreq = 1, len(freq_data)
+
+    if verbose:
+        print('dataset of length {:d} with {:d} ensemble frequencies'.format(Ndata, Nfreq))
     perm_index = []
     freqs_sorted = []
 
@@ -964,6 +980,10 @@ def sort_esr_frequencies(freq_data, permutate_all = True, verbose = False):
         """
         calculates the error in B field for a give collection of frequencies
         """
+
+        if verbose:
+            print('>>>> err <<<<<', freq)
+
         # calculate the fields for each family
         Bs = calc_bfields_esr_ensemble_mag(freq)[1]
         # calculate the total field
@@ -1029,6 +1049,10 @@ def sort_esr_frequencies(freq_data, permutate_all = True, verbose = False):
     for j, freq in enumerate(freq_data):
         if verbose:
             print(('>>>>>>>>>>>>> RUN <<<<<<<<<<<<<<<<', j))
+
+            print('freqs', freq)
+
+            print('======', Nfreq // 2, '======')
         # permutate over all four families to find the match that gives the lowest error
         if permutate_all:
             # errs = [calc_err(np.array(freq_perm))
@@ -1151,48 +1175,79 @@ def magnetic_moment_and_Br_from_fit(dp, a, r, mu0=4 * np.pi * 1e-7):
 
 
 if __name__ == '__main__':
+    Nfreq=8
+    freq = [2.86012617e+09, 2.90048673e+09, 2.79431116e+09, 2.96440997e+09, 2.89138342e+09, 2.86914524e+09,
+            2.93678139e+09, 2.82525513e+09]
 
-    # solution calculated previously
-    ref_contrast = [11.259005142154569, 11.162777024524557, 10.881956479400158, 10.43856472476315, 9.8649445385505405]
-    ref_Bmag = [ 0, 10, 20, 30, 40]
-
-
-    h_ref=[np.matrix([[ 0.00+0.j,  0.00+0.j,  0.00+0.j],
-        [ 0.00+0.j,  2.87+0.j,  0.00+0.j],
-        [ 0.00+0.j,  0.00+0.j,  2.87+0.j]]), np.matrix([[ 0.00000000+0.j        ,  0.00000000-0.01901095j,
-          0.00000000-0.01901095j],
-        [ 0.00000000+0.01901095j,  2.86229071+0.j        ,  0.00000000+0.j        ],
-        [ 0.00000000+0.01901095j,  0.00000000+0.j        ,  2.87770929+0.j        ]]), np.matrix([[ 0.00000000+0.j        ,  0.00000000-0.03802189j,
-          0.00000000-0.03802189j],
-        [ 0.00000000+0.03802189j,  2.85458142+0.j        ,  0.00000000+0.j        ],
-        [ 0.00000000+0.03802189j,  0.00000000+0.j        ,  2.88541858+0.j        ]]), np.matrix([[ 0.00000000+0.j        ,  0.00000000-0.05703284j,
-          0.00000000-0.05703284j],
-        [ 0.00000000+0.05703284j,  2.84687213+0.j        ,  0.00000000+0.j        ],
-        [ 0.00000000+0.05703284j,  0.00000000+0.j        ,  2.89312787+0.j        ]]), np.matrix([[ 0.00000000+0.j        ,  0.00000000-0.07604378j,
-          0.00000000-0.07604378j],
-        [ 0.00000000+0.07604378j,  2.83916283+0.j        ,  0.00000000+0.j        ],
-        [ 0.00000000+0.07604378j,  0.00000000+0.j        ,  2.90083717+0.j        ]])]
-
-    k12 = 1
-    k13 = 0
-    beta = 0.3
-
-    B= np.array([[0.0000961262, 0., 0.0000275637]]).T
-    Bmag = np.arange(0,50,10)
-    B = np.dot(B, np.array([Bmag])).T
+    print([freq_perm for freq_perm in list(permutations(freq[Nfreq // 2:]))])
 
 
 
-    # h = [hamiltonian_nv_spin1(b) for b in B]
-    # h = coupling_matrix(B)
-    c = photoluminescence_contrast(B, k12, k13, beta)
-    # k = transition_rate_matrix(B, k12, k13, beta)
+
+    # freq = np.reshape(freq,(-1,2))
+    freq2 = sort_esr_frequencies([freq], permutate_all=False, verbose=True)
+
+    print(freq)
+
+    # print(freq2)
+
+
+
+
+
+
+
+
+
+
+
+
+
     #
+    #
+    #
+    #
+    # # solution calculated previously
+    # ref_contrast = [11.259005142154569, 11.162777024524557, 10.881956479400158, 10.43856472476315, 9.8649445385505405]
+    # ref_Bmag = [ 0, 10, 20, 30, 40]
+    #
+    #
+    # h_ref=[np.matrix([[ 0.00+0.j,  0.00+0.j,  0.00+0.j],
+    #     [ 0.00+0.j,  2.87+0.j,  0.00+0.j],
+    #     [ 0.00+0.j,  0.00+0.j,  2.87+0.j]]), np.matrix([[ 0.00000000+0.j        ,  0.00000000-0.01901095j,
+    #       0.00000000-0.01901095j],
+    #     [ 0.00000000+0.01901095j,  2.86229071+0.j        ,  0.00000000+0.j        ],
+    #     [ 0.00000000+0.01901095j,  0.00000000+0.j        ,  2.87770929+0.j        ]]), np.matrix([[ 0.00000000+0.j        ,  0.00000000-0.03802189j,
+    #       0.00000000-0.03802189j],
+    #     [ 0.00000000+0.03802189j,  2.85458142+0.j        ,  0.00000000+0.j        ],
+    #     [ 0.00000000+0.03802189j,  0.00000000+0.j        ,  2.88541858+0.j        ]]), np.matrix([[ 0.00000000+0.j        ,  0.00000000-0.05703284j,
+    #       0.00000000-0.05703284j],
+    #     [ 0.00000000+0.05703284j,  2.84687213+0.j        ,  0.00000000+0.j        ],
+    #     [ 0.00000000+0.05703284j,  0.00000000+0.j        ,  2.89312787+0.j        ]]), np.matrix([[ 0.00000000+0.j        ,  0.00000000-0.07604378j,
+    #       0.00000000-0.07604378j],
+    #     [ 0.00000000+0.07604378j,  2.83916283+0.j        ,  0.00000000+0.j        ],
+    #     [ 0.00000000+0.07604378j,  0.00000000+0.j        ,  2.90083717+0.j        ]])]
+    #
+    # k12 = 1
+    # k13 = 0
+    # beta = 0.3
+    #
+    # B= np.array([[0.0000961262, 0., 0.0000275637]]).T
+    # Bmag = np.arange(0,50,10)
+    # B = np.dot(B, np.array([Bmag])).T
+    #
+    #
+    #
+    # # h = [hamiltonian_nv_spin1(b) for b in B]
+    # # h = coupling_matrix(B)
+    # c = photoluminescence_contrast(B, k12, k13, beta)
+    # # k = transition_rate_matrix(B, k12, k13, beta)
+    # #
     # p = populations(k)
     #
     # pl = photoluminescence_rate(k, p)
-
-    print(np.shape(c))
-    print(c)
-
-    print(np.allclose(c, ref_contrast))
+    #
+    # print(np.shape(c))
+    # print(c)
+    #
+    # print(np.allclose(c, ref_contrast))
