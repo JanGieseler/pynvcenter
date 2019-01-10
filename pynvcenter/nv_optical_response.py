@@ -3,6 +3,7 @@ import scipy.optimize as opt
 import itertools
 from itertools import permutations
 
+from scipy.signal import find_peaks
 
 # spin 1 matrices
 Sx = np.matrix([
@@ -161,6 +162,112 @@ def esr_contrast_ensemble(B_lab, k_MW=10, beta=1, gs=27.969, muB=1, hbar=1, Dgs=
     # N is the number of NV families
     return np.moveaxis(C, 0, 1)
 
+
+def esr_connect(esr_freq):
+    """
+    esr_freq: esr frequencies of shape [:, 4, 2]
+
+
+    returns: esr frequencies where lines are connected
+    """
+
+    esr_connected = np.zeros(esr_freq.shape)
+    for i in range(4):
+        esr1, esr2 = esr_freq[:, i, 0], esr_freq[:, i, 1]
+        esr_diff = esr1 - esr2
+
+        peaks, _ = find_peaks(esr_diff, distance=5)
+
+        assert len(peaks) >= 2  # expect to find two peaks
+
+        p1, p2 = peaks[0:2]
+        esr1, esr2 = np.hstack([esr1[0:p1], esr2[p1:p2], esr1[p2:]]), np.hstack([esr2[0:p1], esr1[p1:p2], esr2[p2:]])
+
+        esr_connected[:, i, 0], esr_connected[:, i, 1] = esr1, esr2
+
+    return np.array(esr_connected)
+
+
+def contrast_to_count_rates_avrg(contrast, avrg_count_rate):
+    """
+    convert contrast and average count rate to min count rate (c1) and max count rate (co)
+
+    :param contrast:
+    :param avrg_count_rate:
+    :return:
+    """
+
+
+    c1 = (1 + contrast) * avrg_count_rate
+    co = (1 - contrast) * avrg_count_rate
+
+    return co, c1
+
+def contrast_to_count_rates_max(contrast, c1):
+    """
+    convert contrast and max count rate to min count rate (c1) and max count rate (co)
+
+    :param contrast:
+    :param avrg_count_rate:
+    :return:
+    """
+
+
+    co = (1 - contrast) / (1 + contrast) * c1
+
+    return co, c1
+
+def count_rates_to_contrast(co, c1):
+    """
+    calculates contrast and average countrate from min and max count rates
+    :param co:
+    :param c1:
+    :return:
+    """
+
+
+    contrast = (c1-co) / (co+c1)
+    avrg_count_rate = (co+c1) / 2
+
+    return contrast, avrg_count_rate
+
+def esr_odmr_signal(f, co, c1, linewidth, fo):
+    """
+    esr signal for a single nv transition
+
+    :param f:
+    :param co:
+    :param c1:
+    :param linewidth:
+    :param fo:
+    :return:
+    """
+
+    wo = 2 * np.pi * fo
+    w = 2 * np.pi * f
+    signal = c1-(c1-co)*linewidth**2 / ( (w-wo)**2+linewidth**2 )
+
+    return signal
+
+
+def esr_odmr_signal_ensemble(f, f_esr, contrast, avrg_count_rate=1, linewidth=1e7):
+    """
+    f = array of frequencies
+    f_esr = list type typically f length 8 that contains the 8 esr transition freqs.
+    contrast = list type typically f length 8 that contains the 8 esr transition freqs.
+    avrg_count_rate = average count rate
+    linewidth = linewidth of esr (same for all transitions)
+    """
+
+    assert len(f_esr) == len(contrast)  # fo, contrast should have the same length
+
+    signal = 0
+    for fo, contrast in zip(f_esr, contrast):
+        co, c1 = contrast_to_count_rates_max(contrast / 100, avrg_count_rate)
+        signal += esr_odmr_signal(f, co=co, c1=c1, linewidth=linewidth, fo=fo)
+    signal /= len(f_esr)
+
+    return signal
 
 def hamiltonian_nv_spin1(Bfield, gs=27.969, muB=1, hbar=1, D=2.87):
     """
