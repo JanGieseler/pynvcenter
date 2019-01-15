@@ -188,6 +188,7 @@ def esr_connect(esr_freq):
     return np.array(esr_connected)
 
 
+
 def contrast_to_count_rates_avrg(contrast, avrg_count_rate):
     """
     convert contrast and average count rate to min count rate (c1) and max count rate (co)
@@ -231,26 +232,38 @@ def count_rates_to_contrast(co, c1):
 
     return contrast, avrg_count_rate
 
-def esr_odmr_signal(f, co, c1, linewidth, fo):
+def esr_odmr_signal(f, co, c1, linewidth, fo, shot_noise=0):
     """
     esr signal for a single nv transition
 
-    :param f:
+    :param f: in Hz (not angular freq)
     :param co:
     :param c1:
-    :param linewidth:
-    :param fo:
+    :param linewidth: in Hz (not angular freq)
+    :param fo: in Hz (not angular freq)
+    :param shot_noise: if larger than 0, the number corresponds to the measurement time in milliseconds, if the count rate co, c1 are given in kCounts
     :return:
     """
 
     wo = 2 * np.pi * fo
     w = 2 * np.pi * f
-    signal = c1-(c1-co)*linewidth**2 / ( (w-wo)**2+linewidth**2 )
+
+    linewidth =  2 * np.pi * linewidth
+
+    if shot_noise>0:
+        counts = np.random.poisson(lam=c1*shot_noise, size=len(f)) / shot_noise
+    else:
+
+        counts = c1
+
+    signal = counts-(counts-co)*linewidth**2 / ( (w-wo)**2+linewidth**2 )
+
+
 
     return signal
 
 
-def esr_odmr_signal_ensemble(f, f_esr, contrast, avrg_count_rate=1, linewidth=1e7):
+def esr_odmr_signal_ensemble(f, f_esr, contrast, avrg_count_rate=1, linewidth=1e7, shot_noise=0):
     """
     f = array of frequencies
     f_esr = list type typically f length 8 that contains the 8 esr transition freqs.
@@ -264,7 +277,7 @@ def esr_odmr_signal_ensemble(f, f_esr, contrast, avrg_count_rate=1, linewidth=1e
     signal = 0
     for fo, contrast in zip(f_esr, contrast):
         co, c1 = contrast_to_count_rates_max(contrast / 100, avrg_count_rate)
-        signal += esr_odmr_signal(f, co=co, c1=c1, linewidth=linewidth, fo=fo)
+        signal += esr_odmr_signal(f, co=co, c1=c1, linewidth=linewidth, fo=fo, shot_noise=shot_noise)
     signal /= len(f_esr)
 
     return signal
