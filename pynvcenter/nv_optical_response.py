@@ -439,7 +439,7 @@ def populations(transition_rates):
         a = np.row_stack([a, np.ones([1, len(k)])])
         b = np.hstack([np.zeros(len(k)), [1]])
 
-        n, residuals, rank, s = np.linalg.lstsq(a,b)
+        n, residuals, rank, s = np.linalg.lstsq(a,b, rcond=None)
 
         # some extra information from the fit we could use to validate the result
         # print('residuals', residuals)
@@ -682,7 +682,7 @@ def calc_bfields_esr_ensemble_mag(frequencies, verbose=False):
     frequencies: the esr frequencies, e.g. the frequencies obtained from a fit to ESR data. (in GHz)
     This is a N x 2 matrix, where N is the number of families and 2 are the two frequencies
 
-    of
+    or
 
     This is a vector of length 2*N, where the ordering is NVa_low, NVa_high, NVb_low, NVb_high, etc
 
