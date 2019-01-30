@@ -24,7 +24,8 @@ magnet_parameters = {
     'avrg_count_rate': 1
 }
 
-label_map = {'xo': 'x', 'yo': 'y', 'dipole_height': 'z', 'theta_mag': 't', 'phi_mag': 'p'}
+label_map = {'xo': 'x', 'yo': 'y', 'dipole_height': 'z', 'theta_mag': 't', 'phi_mag': 'p',
+             'particle_radius':'a', 'nv_radius': 'r'}
 
 
 def create_image(xo, yo, plot_img=False, particle_radius=20, nv_radius=70, theta_mag=0, phi_mag=45,

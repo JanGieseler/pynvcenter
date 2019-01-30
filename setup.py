@@ -2,8 +2,8 @@ from setuptools import setup
 
 setup(
     name='pynvcenter',
-    version='0.0.2',
-    description='My private package from private github repo',
+    version='0.0.3',
+    description='package to calculate the NV center in diamond properties',
     url='git@github.com:JanGieseler/pynvcenter.git',
     author='Jna Gieseler',
     author_email='jangie@pm.me',
