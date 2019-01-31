@@ -75,7 +75,7 @@ def generate_data(n_data, parameters=None, n_jobs=2):
 
     positions = None
     for k, v in parameters.items():
-        if type(v) == tuple:
+        if type(v) == tuple or type(v) == list:
             if positions is None:
                 positions = pd.DataFrame(v[0] + v[1] * (np.random.random(n_data) - 0.5), columns=[k])
             else:
@@ -118,7 +118,7 @@ def generate_data(n_data, parameters=None, n_jobs=2):
     return {'X': X, 'Y': Y, 'labels': labels}
 
 
-def esr_preprocessing(X):
+def esr_preprocessing(X, reference_level=1):
     """
 
     process data as we get it from a measurement such that we can use it to fit our model
@@ -127,14 +127,81 @@ def esr_preprocessing(X):
     here we subtract each esr map from its mean to obtain maps that have peaks instead of dips
 
     X: matrix with dimensions (None, n_freq, n_angle) containing the esr data
+
+
+
+    reference_level: level of background
+        - int or float: data is normalized such that background counts are around one
+        - mean: take the mean over the esr_map
+        - mode: !!not implemented yet !!, find the mode of the esr_map (most frequent counts) and normalize to that
     """
 
     x_shape = X.shape
     assert len(x_shape) == 3
 
-    mean = np.mean(X.reshape(x_shape[0], -1), axis=1)
+    if reference_level == 'mean':
+        mean = np.mean(X.reshape(x_shape[0], -1), axis=1)
+    elif type(reference_level) in (int, float):
+        mean = reference_level * np.ones(x_shape[0])
+    else:
+        print('did not recognize datatype')
+        raise TypeError
 
-    return np.repeat(mean, np.product(x_shape[1:])).reshape(x_shape) - X
+    val_range = np.max(X.reshape(x_shape[0], -1), axis=1) - np.min(X.reshape(x_shape[0], -1), axis=1)
+
+    preprocessing_info = {'mean': mean}
+
+    X = np.repeat(mean, np.product(x_shape[1:])).reshape(
+        x_shape) - X  # flip and substract reference level (so that background is at zero)
+
+    X = X / np.repeat(val_range, np.product(x_shape[1:])).reshape(x_shape)  # normalize image by the value range
+
+    return X
+
+
+class CustomScalerY():
+    def __init__(self, Y, magnet_parameters, labels):
+
+        norm_dict = {k: [p[0] - p[1] / 2, p[1]] for k, p in magnet_parameters.items() if
+                     type(p) == list}  # build dictionary with min value and range of values
+        max_range = max(np.array([v for k, v in norm_dict.items() if k not in ['theta_mag', 'phi_mag']])[:,
+                        1])  # this is the max range of the position values
+
+        # for position values use max range instead of individual range
+        for k, v in norm_dict.items():
+            if k not in ['theta_mag', 'phi_mag']:
+                norm_dict[k][1] = max_range
+
+        self.norm_dict = norm_dict
+        self.labels = labels
+
+    def transform(self, Y, inplace=False):
+
+        if inplace:
+            # now normlize the Y values
+            for k, v in self.norm_dict.items():
+                column_id = [l == k for l in self.labels]
+                Y[:, column_id] = (Y[:, column_id] - v[0]) / v[
+                    1]  # v[0]=min,  v[1]=range, i.e. normalize such that values are between 0 and 1
+
+            return Y
+        else:
+            # now normalize the Y values
+            return np.hstack([(Y[:, [l == k for l in self.labels]] - v[0]) / v[1] for k, v in self.norm_dict.items()])
+
+    def inverse_transform(self, Y, inplace=True):
+
+        if inplace:
+            # now normlize the Y values
+            for k, v in self.norm_dict.items():
+                column_id = [l == k for l in self.labels]
+                Y[:, column_id] = v[1] * Y[:, column_id] + v[
+                    0]  # v[0]=min,  v[1]=range, i.e. normalize such that values are between 0 and 1
+
+            return Y
+        else:
+            # now normlize the Y values
+            return np.hstack([v[1] * Y[:, [l == k for l in self.labels]] + v[0] for k, v in self.norm_dict.items()])
 
 
 def get_x_scaler(X, option=0):
@@ -194,56 +261,68 @@ def split_and_scale(X, Y, x_scaler, y_scaler, test_size=0.1, option=2):
     return X_train, X_test, Y_train, Y_test
 
 
-def analyze_fit(X, Y, model, labels,  magnet_parameters, n_plot=3, n_max=20, x_scaler=None, y_scaler=None):
+def analyze_fit(X, Y, model, labels,  magnet_parameters, n_plot=3, n_max=20, x_scaler=None, y_scaler=None, verbose=False):
 
     if x_scaler:
+        if verbose:
+            print('rescaling X')
         x_shape = X.shape
         Xs = x_scaler.transform(X.reshape(x_shape[0], -1).astype(np.float32)).reshape(x_shape)
     else:
         Xs = X
 
     if y_scaler:
-        Ys = y_scaler.transform(Y)
+        if verbose:
+            print('rescaling Y')
+        Ys = y_scaler.transform(Y, inplace=False)
     else:
         Ys = Y
 
     if Xs.shape[-1] != 1:  # model expects a dimension for "color channels"
+        if verbose:
+            print('exapnd dims X')
         Xs = np.expand_dims(Xs, -1)
 
     Y_predict = model.predict(Xs)
 
-    #     for k, v in magnet_parameters.items():
-    #         print(k, v)
+    if verbose:
+        print('Y_predict:')
+        print(pd.DataFrame(Y_predict, columns=labels))
 
     fig, ax = plt.subplots(1, 2, figsize=(8, 5))
 
+
+
     for i in range(len(Xs)):
-        ax[0].plot([Ys[i, 0], Y_predict[i, 0]], [Ys[i, 1], Y_predict[i, 1]], 'go-', alpha=0.2)
+        ax[0].plot([Ys[i, labels.index('xo')], Y_predict[i, labels.index('xo')]],
+                   [Ys[i, labels.index('yo')], Y_predict[i, labels.index('yo')]], 'go-', alpha=0.2)
         ax[0].set_xlabel('xo')
         ax[0].set_ylabel('yo')
-    ax[0].scatter(Ys[:n_max, 0], Ys[:n_max, 1], marker='o')
-    ax[0].scatter(Y_predict[:n_max, 0], Y_predict[:n_max, 1], marker='x')
+    ax[0].scatter(Ys[:n_max, labels.index('xo')], Ys[:n_max, labels.index('yo')], marker='o')
+    ax[0].scatter(Y_predict[:n_max, labels.index('xo')], Y_predict[:n_max, labels.index('yo')], marker='x')
     ax[0].set_title('scaled outputs')
 
+
     if y_scaler:
-        Y_real = y_scaler.inverse_transform(Ys)
-        Y_pred_real = y_scaler.inverse_transform(Y_predict)
+        Y_real = y_scaler.inverse_transform(Ys, inplace=False)
+        Y_pred_real = y_scaler.inverse_transform(Y_predict, inplace=False)
     else:
         Y_real = Ys
         Y_pred_real = Y_predict
 
-    ax[1].scatter(Y_real[0:n_max, 0], Y_real[0:n_max, 1], marker='o')
-    ax[1].scatter(Y_pred_real[:, 0], Y_pred_real[:, 1], marker='x')
+    ax[1].scatter(Y_real[0:n_max, labels.index('xo')], Y_real[0:n_max, labels.index('yo')], marker='o', label = 'real')
+    ax[1].scatter(Y_pred_real[:, labels.index('xo')], Y_pred_real[:, labels.index('yo')], marker='x', label = 'pred')
     ax[1].set_xlabel('xo')
     ax[1].set_ylabel('yo')
     ax[1].set_title('physical outputs')
+    plt.legend()
 
     f_min = magnet_parameters['f_min']
     f_max = magnet_parameters['f_max']
     n_angle = magnet_parameters['n_angle']
     n_freq = magnet_parameters['n_freq']
     frequencies = np.linspace(f_min, f_max, n_freq)
-    angle = np.linspace(0, 360, n_angle)
+    angles = np.linspace(0, 360, n_angle+1)[0:-1]
 
     if x_scaler:
         x_shape = Xs.shape[0:-1]
@@ -251,24 +330,37 @@ def analyze_fit(X, Y, model, labels,  magnet_parameters, n_plot=3, n_max=20, x_s
     else:
         X_real = Xs
 
+
     for i in range(n_plot):
         fig, ax = plt.subplots(1, 2, figsize=(12, 4))
 
-        img = create_image(**{**magnet_parameters, **{k: v for k, v in zip(labels, Y_pred_real)}})
+        magnet_parameters_new = {**magnet_parameters, **{k: v for k, v in zip(labels, Y_pred_real[i])}}
+
+        img_dim = X_real.shape[1:3]  # get the dimensions of the image used for the model so that we can pad the generated image to the same dimensions
+
+
+        if verbose:
+            print('magnet_parameters_new', magnet_parameters_new)
+
+
+        img = create_image(**magnet_parameters_new)
+
+        if verbose:
+            print('img_dim', img_dim, img.shape, (len(angles), len(frequencies)), img_dim != (len(angles), len(frequencies)))
 
         # pad generated image so that it has the same size as the one used for the model prediction
-        if img.shape != (len(angles), len(frequencies)):
-            img, angles, frequencies = pad_image(img, X_real.shape[-2:], angles=angles, frequencies=frequencies)
+        if img_dim != (len(angles), len(frequencies)):
+            img, angles, frequencies = pad_image(img, img_dim, angles=angles, frequencies=frequencies)
         else:
-            img = pad_image(img, X_real.shape[-2:])
+            img = pad_image(img, img_dim)
 
-
-        ax[0].pcolor(frequencies, angle, np.squeeze(X_real[i]))
+        ax[0].pcolor(frequencies, angles, np.squeeze(X_real[i]))
+        # ax[0].pcolor(np.squeeze(X_real[i]))
         ax[0].set_title('real\n' + ', '.join([label_map[k] + '={:0.2f}' for k in labels]).format(*Y_real[i]))
         # and create the image, construction in second argument constructs the updates parameter dictionary
 
 
-        ax[1].pcolor(frequencies, angle, img)
+        ax[1].pcolor(frequencies, angles, img)
         ax[1].set_title(
             'reconstructed\n' + ', '.join([label_map[k] + '={:0.2f}' for k in labels]).format(*Y_pred_real[i]))
         plt.tight_layout()
@@ -280,8 +372,6 @@ def pad_image(X, img_dims, angles=None, frequencies=None):
     pads the image along the height dimension with periodic boundary conditions
     and crops the image symmetrically in the width dimensions
 
-
-
     :param X: array of shape (N, H, W) or (H, W)
     :param img_dims: target image dimensions (Hi, Wi), where Hi >=H and Wi<=W
     :return:
@@ -290,9 +380,16 @@ def pad_image(X, img_dims, angles=None, frequencies=None):
 
     padding_dims = [d - s for s, d in zip(X.shape[-2:], img_dims)]
 
-    print('typically we expect to cut off the image along the frequency dimension and pad it in the angle dimension')
+    # print('typically we expect to cut off the image along the frequency dimension and pad it in the angle dimension')
     assert padding_dims[0] >= 0
     assert padding_dims[1] <= 0
+
+
+    x_num_of_dims = len(X.shape)
+
+    # if X of shape (H, W) expand to  (1, H, W)
+    if x_num_of_dims ==2:
+        X  = np.expand_dims(X, 0)
 
     padding_dims = [[p // 2, p - p // 2] for p in
                     padding_dims]  # calculate the padding dims for the left/right, up/down
@@ -301,8 +398,13 @@ def pad_image(X, img_dims, angles=None, frequencies=None):
     X = np.concatenate([X[:, -padding_dims[0][0]:], X, X[:, 0:padding_dims[0][1]]], axis=1)
     X = X[:, :, padding_dims[1][0]:padding_dims[1][1]]
 
-    if angles:
-        angle = np.concatenate([angles[-padding_dims[0][0]:], angles, angles[0:padding_dims[0][1]]], axis=1)
+    # if X of shape (H, W) undo  (1, H, W) back to (H, W)
+    if x_num_of_dims == 2:
+        X = np.squeeze(X, axis=0)
+
+    if angles is not None:
+
+        angles = np.hstack([angles[-padding_dims[0][0]:] - 360, angles, 360 + angles[0:padding_dims[0][1]]])
         frequencies = frequencies[padding_dims[1][0]:padding_dims[1][1]]
         return X, angles, frequencies
     else:
