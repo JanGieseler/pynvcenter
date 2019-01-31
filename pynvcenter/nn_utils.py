@@ -259,9 +259,9 @@ def analyze_fit(X, Y, model, labels,  magnet_parameters, n_plot=3, n_max=20, x_s
 
         # pad generated image so that it has the same size as the one used for the model prediction
         if img.shape != (len(angles), len(frequencies)):
-            img, angles, frequencies = (img, X_real.shape[-2:], angles=angles, frequencies=frequencies)
+            img, angles, frequencies = pad_image(img, X_real.shape[-2:], angles=angles, frequencies=frequencies)
         else:
-            img = (img, X_real.shape[-2:])
+            img = pad_image(img, X_real.shape[-2:])
 
 
         ax[0].pcolor(frequencies, angle, np.squeeze(X_real[i]))
