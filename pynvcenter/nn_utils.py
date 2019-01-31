@@ -254,8 +254,7 @@ def analyze_fit(X, Y, model, labels,  magnet_parameters, n_plot=3, n_max=20, x_s
     for i in range(n_plot):
         fig, ax = plt.subplots(1, 2, figsize=(12, 4))
 
-        img = create_image(*Y_pred_real[i, 0:2],
-                           **{**magnet_parameters, **{k: v for k, v in zip(labels, Y_pred_real)}})
+        img = create_image(**{**magnet_parameters, **{k: v for k, v in zip(labels, Y_pred_real)}})
 
         # pad generated image so that it has the same size as the one used for the model prediction
         if img.shape != (len(angles), len(frequencies)):
