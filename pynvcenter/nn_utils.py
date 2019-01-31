@@ -121,7 +121,7 @@ def generate_data(n_data, parameters=None, n_jobs=2):
 def esr_preprocessing(X):
     """
 
-    process data as we get it from a measuement such that we can use it to fit our model
+    process data as we get it from a measurement such that we can use it to fit our model
 
     esr has dips
     here we subtract each esr map from its mean to obtain maps that have peaks instead of dips
@@ -195,6 +195,7 @@ def split_and_scale(X, Y, x_scaler, y_scaler, test_size=0.1, option=2):
 
 
 def analyze_fit(X, Y, model, labels,  magnet_parameters, n_plot=3, n_max=20, x_scaler=None, y_scaler=None):
+
     if x_scaler:
         x_shape = X.shape
         Xs = x_scaler.transform(X.reshape(x_shape[0], -1).astype(np.float32)).reshape(x_shape)
@@ -253,12 +254,57 @@ def analyze_fit(X, Y, model, labels,  magnet_parameters, n_plot=3, n_max=20, x_s
     for i in range(n_plot):
         fig, ax = plt.subplots(1, 2, figsize=(12, 4))
 
+        img = create_image(*Y_pred_real[i, 0:2],
+                           **{**magnet_parameters, **{k: v for k, v in zip(labels[2:], Y_pred_real[i, 2:])}})
+
+        # pad generated image so that it has the same size as the one used for the model prediction
+        if img.shape != (len(angles), len(frequencies)):
+            img, angles, frequencies = (img, X_real.shape[-2:], angles=angles, frequencies=frequencies)
+        else:
+            img = (img, X_real.shape[-2:])
+
+
         ax[0].pcolor(frequencies, angle, np.squeeze(X_real[i]))
         ax[0].set_title('real\n' + ', '.join([label_map[k] + '={:0.2f}' for k in labels]).format(*Y_real[i]))
         # and create the image, construction in second argument constructs the updates parameter dictionary
-        img = create_image(*Y_pred_real[i, 0:2],
-                           **{**magnet_parameters, **{k: v for k, v in zip(labels[2:], Y_pred_real[i, 2:])}})
+
+
         ax[1].pcolor(frequencies, angle, img)
         ax[1].set_title(
             'reconstructed\n' + ', '.join([label_map[k] + '={:0.2f}' for k in labels]).format(*Y_pred_real[i]))
         plt.tight_layout()
+
+
+def pad_image(X, img_dims, angles=None, frequencies=None):
+    """
+
+    pads the image along the height dimension with periodic boundary conditions
+    and crops the image symmetrically in the width dimensions
+
+
+
+    :param X: array of shape (N, H, W) or (H, W)
+    :param img_dims: target image dimensions (Hi, Wi), where Hi >=H and Wi<=W
+    :return:
+    """
+
+
+    padding_dims = [d - s for s, d in zip(X.shape[-2:], img_dims)]
+
+    print('typically we expect to cut off the image along the frequency dimension and pad it in the angle dimension')
+    assert padding_dims[0] >= 0
+    assert padding_dims[1] <= 0
+
+    padding_dims = [[p // 2, p - p // 2] for p in
+                    padding_dims]  # calculate the padding dims for the left/right, up/down
+    padding_dims[1] = [max([-padding_dims[1][0] - 1, 0]),
+                       X.shape[-1] + padding_dims[1][0]]  # for the freq we actually want the range
+    X = np.concatenate([X[:, -padding_dims[0][0]:], X, X[:, 0:padding_dims[0][1]]], axis=1)
+    X = X[:, :, padding_dims[1][0]:padding_dims[1][1]]
+
+    if angles:
+        angle = np.concatenate([angles[-padding_dims[0][0]:], angles, angles[0:padding_dims[0][1]]], axis=1)
+        frequencies = frequencies[padding_dims[1][0]:padding_dims[1][1]]
+        return X, angles, frequencies
+    else:
+        return X
