@@ -21,7 +21,9 @@ magnet_parameters = {
     'n_freq': 448,  # 351
     'f_min': 2.62e9,  # , 2.695
     'f_max': 3.120e9,  # , 3.045
-    'avrg_count_rate': 1
+    'avrg_count_rate': 1,
+    'xo': 0,
+    'yo': 0
 }
 
 label_map = {'xo': 'x', 'yo': 'y', 'dipole_height': 'z', 'theta_mag': 't', 'phi_mag': 'p',
@@ -54,26 +56,47 @@ def worker_function(parameters, pbar=None):
     return img  # return the image
 
 
-def generate_data(n_data, parameters=None, n_jobs=2,
-                  random_labels = ['xo', 'yo', 'dipole_height', 'theta_mag', 'phi_mag', 'particle_radius', 'nv_radius']):
+def generate_data(n_data, parameters=None, n_jobs=2):
+
+    """
+
+
+
+
+    :param n_data:
+    :param parameters: parameters such as magnet_parameters as a dictionary, if single value, this value is fixed if tupple then first value is mean and second the range
+    :param n_jobs:
+    :param random_labels:
+    :return:
+    """
     max_displacement = 20  ## maximum offset from the center
     # positive and negative values
-    positions = pd.DataFrame(max_displacement * (np.random.random((n_data, 2)) - 0.5), columns=['xo', 'yo'])
+    # positions = pd.DataFrame(max_displacement * (np.random.random((n_data, 2)) - 0.5), columns=['xo', 'yo'])
 
-    if 'xo' not in random_labels:
-        del positions['xo']
-    if 'yo' not in random_labels:
-        del positions['yo']
-    if 'dipole_height' in random_labels:
-        positions['dipole_height'] = 20 * (np.random.random((n_data))) + 60
-    if 'theta_mag' in random_labels:
-        positions['theta_mag'] = 90 * (np.random.random((n_data)))
-    if 'phi_mag' in random_labels:
-        positions['phi_mag'] = 90 * (np.random.random((n_data)))
-    if 'particle_radius' in random_labels:
-        positions['particle_radius'] = 2 * (np.random.random((n_data))) + 20
-    if 'nv_radius' in random_labels:
-        positions['nv_radius'] = 3 * (np.random.random((n_data))) + 70
+    positions = None
+    for k, v in parameters.items():
+        if type(v) == tuple:
+            if positions is None:
+                positions = pd.DataFrame(v[0] + v[1] * (np.random.random(n_data) - 0.5), columns=[k])
+            else:
+                positions[k] = v[0] + v[1] * (np.random.random(n_data) - 0.5)
+
+    assert positions is not None, 'at least one random variable required (one element of parameters should be a tupple)'
+
+    # if 'xo' not in random_labels:
+    #     del positions['xo']
+    # if 'yo' not in random_labels:
+    #     del positions['yo']
+    # if 'dipole_height' in random_labels:
+    #     positions['dipole_height'] = 20 * (np.random.random((n_data))) + 60
+    # if 'theta_mag' in random_labels:
+    #     positions['theta_mag'] = 90 * (np.random.random((n_data)))
+    # if 'phi_mag' in random_labels:
+    #     positions['phi_mag'] = 90 * (np.random.random((n_data)))
+    # if 'particle_radius' in random_labels:
+    #     positions['particle_radius'] = 2 * (np.random.random((n_data))) + 20
+    # if 'nv_radius' in random_labels:
+    #     positions['nv_radius'] = 3 * (np.random.random((n_data))) + 70
 
     X = Parallel(n_jobs=n_jobs, backend='multiprocessing')(
         delayed(worker_function)({**parameters, **positions.iloc[i].to_dict()})
