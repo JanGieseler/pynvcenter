@@ -174,7 +174,8 @@ class CustomScalerY():
 
         norm_dict = {k: [p[0] - p[1] / 2, p[1]] for k, p in magnet_parameters.items() if
                      type(p) == list}  # build dictionary with min value and range of values
-        max_range = max(np.array([v for k, v in norm_dict.items() if k not in angle_labels])[:,
+
+        max_range = max(np.array([v for k, v in norm_dict.items() if k in position_labels])[:,
                         1])  # this is the max range of the position values
 
         # for position values use max range instead of individual range
