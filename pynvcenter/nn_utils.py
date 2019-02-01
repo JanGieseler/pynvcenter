@@ -34,7 +34,9 @@ def create_image(xo, yo, plot_img=False, particle_radius=20, nv_radius=70, theta
                  dipole_height=80, shot_noise=0, linewidth=1e7,
                  n_angle=60, n_freq=300,
                  f_min=2.65e9, f_max=3.15e9,
-                 avrg_count_rate=100):
+                 avrg_count_rate=100,
+                 MW_rabi = 10, Dgs=2.87
+                 ):
     """
     xo, yo center of the circle
     """
@@ -44,6 +46,7 @@ def create_image(xo, yo, plot_img=False, particle_radius=20, nv_radius=70, theta
                                               phi_mag=phi_mag, dipole_height=dipole_height, shot_noise=shot_noise,
                                               linewidth=linewidth, n_angle=n_angle, n_freq=n_freq,
                                               f_min=f_min, f_max=f_max, avrg_count_rate=avrg_count_rate,
+                                              MW_rabi=MW_rabi, Dgs=Dgs,
                                               return_data=True, show_plot=plot_img)
 
     return signal
@@ -143,6 +146,8 @@ def esr_preprocessing(X, reference_level=1):
         mean = np.mean(X.reshape(x_shape[0], -1), axis=1)
     elif type(reference_level) in (int, float):
         mean = reference_level * np.ones(x_shape[0])
+    elif reference_level == 'min_max':
+        mean = (np.max(X.reshape(x_shape[0], -1), axis=1) + np.min(X.reshape(x_shape[0], -1), axis=1))/2
     else:
         print('did not recognize datatype')
         raise TypeError
@@ -160,16 +165,21 @@ def esr_preprocessing(X, reference_level=1):
 
 
 class CustomScalerY():
-    def __init__(self, Y, magnet_parameters, labels):
+    def __init__(self, magnet_parameters, labels):
+
+
+        angle_labels = ['theta_mag', 'phi_mag']
+        position_labels = ['particle_radius', 'nv_radius', 'dipole_height', 'xo', 'yo']
+        frequency_labels = ['linewidth', 'MW_rabi', 'Dgs']
 
         norm_dict = {k: [p[0] - p[1] / 2, p[1]] for k, p in magnet_parameters.items() if
                      type(p) == list}  # build dictionary with min value and range of values
-        max_range = max(np.array([v for k, v in norm_dict.items() if k not in ['theta_mag', 'phi_mag']])[:,
+        max_range = max(np.array([v for k, v in norm_dict.items() if k not in angle_labels])[:,
                         1])  # this is the max range of the position values
 
         # for position values use max range instead of individual range
         for k, v in norm_dict.items():
-            if k not in ['theta_mag', 'phi_mag']:
+            if k  in position_labels:
                 norm_dict[k][1] = max_range
 
         self.norm_dict = norm_dict

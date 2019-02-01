@@ -57,7 +57,7 @@ def rotation_matrix_100_to_111(nv_id):
 
     return np.dot(rotation_matrix_x(theta_x), rotation_matrix_z(theta_z))
 
-def get_full_nv_dataset(p, nv_id=1, n=[0, 0, 1], nv_rotation_matrix = None, wo=500e-9, gammaNV=28e9, verbose=False):
+def get_full_nv_dataset(p, nv_id=1, n=[0, 0, 1], nv_rotation_matrix = None, wo=500e-9, gammaNV=28e9, Dgs=2.87, verbose=False):
     """
     returns a full dataset for Nv number nv_id, based on parameters p
 
@@ -97,7 +97,7 @@ def get_full_nv_dataset(p, nv_id=1, n=[0, 0, 1], nv_rotation_matrix = None, wo=5
 
     # convert fields into NV frame
     BNV = nv.B_fields_in_NV_frame(np.array(data[['Bx', 'By', 'Bz']]), nv_id)
-    esr_freq = nv.esr_frequencies(BNV)
+    esr_freq = nv.esr_frequencies(BNV, Dgs=Dgs)
     df['fm'] = esr_freq[:, 0]
     df['fp'] = esr_freq[:, 1]
 
@@ -402,7 +402,7 @@ def fill_in_missing_xy(data):
 
 def esr_2D_map_ring_scan(particle_radius=30, nv_radius=70, nv_x=0, nv_y=0, theta_mag=0, phi_mag=45,
                     dipole_height=80, shot_noise=0, linewidth=1e7, n_angle=51, n_freq=501, f_min=2.65e9, f_max=3.15e9,
-                    avrg_count_rate=1,
+                    avrg_count_rate=1,MW_rabi=10,Dgs = 2.87,
                     return_data=False, show_plot=True):
     """
         simulates the data from a ring scan
@@ -435,9 +435,10 @@ def esr_2D_map_ring_scan(particle_radius=30, nv_radius=70, nv_x=0, nv_y=0, theta
     # calc field
     bfields = f.b_field_single_dipole(r, DipolePosition, m)
 
-    esr_contrast = nv.esr_contrast_ensemble(bfields)
 
-    esr_freq = nv.esr_frequencies_ensemble(bfields)
+    esr_contrast = nv.esr_contrast_ensemble(bfields, k_MW=MW_rabi, Dgs=Dgs)
+
+    esr_freq = nv.esr_frequencies_ensemble(bfields, Dgs=Dgs)
 
     signal = []
     for fo, contrast in zip(esr_freq, esr_contrast):

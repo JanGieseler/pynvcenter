@@ -152,6 +152,9 @@ def esr_contrast_ensemble(B_lab, k_MW=10, beta=1, gs=27.969, muB=1, hbar=1, Dgs=
         # get the off axis and on axis field for NV_i
         BNV = B_fields_in_NV_frame(B_lab,i)
         # calculate the ESR freq. for NV_i
+        # we just calculate the maximum contrast for each of the two transitsion and sum them up
+        # to get the spectrum, we just assume two Lorenzians
+        # An alternative approach would be to assume that the MW freqs. follow a Lorenzian and calculate the photoluminescence contrast for each MW freq.
         Cm = photoluminescence_contrast(BNV, k12=k_MW, k13=0, beta=beta)
         Cp = photoluminescence_contrast(BNV, k12=0, k13=k_MW, beta=beta)
 
@@ -718,8 +721,6 @@ def calc_bfields_esr_ensemble_mag(frequencies, verbose=False):
 
     return Babs, Bs
 
-
-
 def calc_bfields_esr_ensemble_xyz(frequencies, verbose=False):
     """
     Calculates the magnetic fields from the ESR frequencies of N NV families
@@ -1064,7 +1065,6 @@ def get_theta_dr(nv_locations, method='radius'):
         print("unknown method try 'diff' or 'radius'")
 
     return theta, dr
-
 
 def sort_esr_frequencies(freq_data, permutate_all = True, verbose = False):
     """
