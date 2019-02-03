@@ -272,8 +272,10 @@ def split_and_scale(X, Y, x_scaler, y_scaler, test_size=0.1, option=2):
     return X_train, X_test, Y_train, Y_test
 
 
-def analyze_fit(X, Y, model, labels,  magnet_parameters, n_plot=3, n_max=20, x_scaler=None, y_scaler=None, verbose=False):
-
+def analyze_fit(X, Y, model, labels, magnet_parameters, labels_Y=None, n_plot=3, n_max=20, x_scaler=None, y_scaler=None,
+                verbose=False):
+    if labels_Y is None:
+        labels_Y = labels
     if x_scaler:
         if verbose:
             print('rescaling X')
@@ -302,17 +304,14 @@ def analyze_fit(X, Y, model, labels,  magnet_parameters, n_plot=3, n_max=20, x_s
 
     fig, ax = plt.subplots(1, 2, figsize=(8, 5))
 
-
-
     for i in range(len(Xs)):
-        ax[0].plot([Ys[i, labels.index('xo')], Y_predict[i, labels.index('xo')]],
-                   [Ys[i, labels.index('yo')], Y_predict[i, labels.index('yo')]], 'go-', alpha=0.2)
+        ax[0].plot([Ys[i, labels_Y.index('xo')], Y_predict[i, labels_Y.index('xo')]],
+                   [Ys[i, labels_Y.index('yo')], Y_predict[i, labels_Y.index('yo')]], 'go-', alpha=0.2)
         ax[0].set_xlabel('xo')
         ax[0].set_ylabel('yo')
-    ax[0].scatter(Ys[:n_max, labels.index('xo')], Ys[:n_max, labels.index('yo')], marker='o')
-    ax[0].scatter(Y_predict[:n_max, labels.index('xo')], Y_predict[:n_max, labels.index('yo')], marker='x')
+    ax[0].scatter(Ys[:n_max, labels_Y.index('xo')], Ys[:n_max, labels_Y.index('yo')], marker='o')
+    ax[0].scatter(Y_predict[:n_max, labels_Y.index('xo')], Y_predict[:n_max, labels_Y.index('yo')], marker='x')
     ax[0].set_title('scaled outputs')
-
 
     if y_scaler:
         Y_real = y_scaler.inverse_transform(Ys, inplace=False)
@@ -321,8 +320,9 @@ def analyze_fit(X, Y, model, labels,  magnet_parameters, n_plot=3, n_max=20, x_s
         Y_real = Ys
         Y_pred_real = Y_predict
 
-    ax[1].scatter(Y_real[0:n_max, labels.index('xo')], Y_real[0:n_max, labels.index('yo')], marker='o', label = 'real')
-    ax[1].scatter(Y_pred_real[:, labels.index('xo')], Y_pred_real[:, labels.index('yo')], marker='x', label = 'pred')
+    ax[1].scatter(Y_real[0:n_max, labels_Y.index('xo')], Y_real[0:n_max, labels_Y.index('yo')], marker='o',
+                  label='real')
+    ax[1].scatter(Y_pred_real[:, labels_Y.index('xo')], Y_pred_real[:, labels_Y.index('yo')], marker='x', label='pred')
     ax[1].set_xlabel('xo')
     ax[1].set_ylabel('yo')
     ax[1].set_title('physical outputs')
@@ -333,7 +333,7 @@ def analyze_fit(X, Y, model, labels,  magnet_parameters, n_plot=3, n_max=20, x_s
     n_angle = magnet_parameters['n_angle']
     n_freq = magnet_parameters['n_freq']
     frequencies = np.linspace(f_min, f_max, n_freq)
-    angles = np.linspace(0, 360, n_angle+1)[0:-1]
+    angles = np.linspace(0, 360, n_angle + 1)[0:-1]
 
     if x_scaler:
         x_shape = Xs.shape[0:-1]
@@ -341,23 +341,26 @@ def analyze_fit(X, Y, model, labels,  magnet_parameters, n_plot=3, n_max=20, x_s
     else:
         X_real = Xs
 
-
     for i in range(n_plot):
         fig, ax = plt.subplots(1, 2, figsize=(12, 4))
 
-        magnet_parameters_new = {**magnet_parameters, **{k: v for k, v in zip(labels, Y_pred_real[i])}}
+        magnet_parameters_new = {**magnet_parameters, **{k: v for k, v in zip(labels_Y, Y_pred_real[i])}}
+        # if magnet_parameters_new contains ranges we take the first value which corresponds to the center of the range
+        # in the future we might provide an option to change this behaviour
+        magnet_parameters_new = {**magnet_parameters_new,
+                                 **{k: v[0] for k, v in magnet_parameters_new.items() if type(v) in (list, tuple)}}
 
-        img_dim = X_real.shape[1:3]  # get the dimensions of the image used for the model so that we can pad the generated image to the same dimensions
-
+        img_dim = X_real.shape[
+                  1:3]  # get the dimensions of the image used for the model so that we can pad the generated image to the same dimensions
 
         if verbose:
             print('magnet_parameters_new', magnet_parameters_new)
 
-
         img = create_image(**magnet_parameters_new)
 
         if verbose:
-            print('img_dim', img_dim, img.shape, (len(angles), len(frequencies)), img_dim != (len(angles), len(frequencies)))
+            print('img_dim', img_dim, img.shape, (len(angles), len(frequencies)),
+                  img_dim != (len(angles), len(frequencies)))
 
         # pad generated image so that it has the same size as the one used for the model prediction
         if img_dim != (len(angles), len(frequencies)):
@@ -367,13 +370,12 @@ def analyze_fit(X, Y, model, labels,  magnet_parameters, n_plot=3, n_max=20, x_s
 
         ax[0].pcolor(frequencies, angles, np.squeeze(X_real[i]))
         # ax[0].pcolor(np.squeeze(X_real[i]))
-        ax[0].set_title('real\n' + ', '.join([label_map[k] + '={:0.2f}' for k in labels]).format(*Y_real[i]))
+        ax[0].set_title('real\n' + ', '.join([label_map[k] + '={:0.2f}' for k in labels_Y]).format(*Y_real[i]))
         # and create the image, construction in second argument constructs the updates parameter dictionary
-
 
         ax[1].pcolor(frequencies, angles, img)
         ax[1].set_title(
-            'reconstructed\n' + ', '.join([label_map[k] + '={:0.2f}' for k in labels]).format(*Y_pred_real[i]))
+            'reconstructed\n' + ', '.join([label_map[k] + '={:0.2f}' for k in labels_Y]).format(*Y_pred_real[i]))
         plt.tight_layout()
 
 
