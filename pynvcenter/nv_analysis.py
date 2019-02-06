@@ -367,47 +367,49 @@ def calc_max_gradient(p, nv_id, n, max_broadening, max_off_axis_field, phi_diamo
     return gradient
 
 
-def fill_in_missing_xy(data):
-    """
-    data is a pandas data set with colums 'x' and 'y'.
-    Assuming that the x and y values are on a grid will fill in the missing rows
-
-    :returns complete data set
-    """
-
-    Nx, Ny = len(np.unique(X)), len(np.unique(Y))
-
-    if len(data) < Nx * Ny:
-        # fill in missing elements
-
-        dx = int(np.min(
-            np.diff(np.unique(X))) * 1e5) * 1e-5  # we do this weird multiplication to chop of small rounding errors
-        dy = int(np.min(
-            np.diff(np.unique(Y))) * 1e5) * 1e-5  # we do this weird multiplication to chop of small rounding errors
-
-        xmin, xmax = np.min(X), np.max(Y)
-        ymin, ymax = np.min(Y), np.max(Y)
-
-        # these are all the x and y positons that we expect
-        Xo, Yo = np.meshgrid(np.arange(xmin, xmax, dx), np.arange(ymin, ymax, dy))
-
-        # fill in the rows where the data is missing (values are basically all NaN except for the position xy)
-        for xo, yo in zip(Xo.flatten(), Yo.flatten()):
-            if len(data[(data['x'] == xo) & (data['y'] == yo)]) == 0:
-                data = data.append(pd.DataFrame.from_records({'x': [xo], 'y': [yo]}, index=[len(data)]))
-
-    return data
+# def fill_in_missing_xy(data):
+#     """
+#     data is a pandas data set with colums 'x' and 'y'.
+#     Assuming that the x and y values are on a grid will fill in the missing rows
+#
+#     :returns complete data set
+#     """
+#
+#     Nx, Ny = len(np.unique(X)), len(np.unique(Y))
+#
+#     if len(data) < Nx * Ny:
+#         # fill in missing elements
+#
+#         dx = int(np.min(
+#             np.diff(np.unique(X))) * 1e5) * 1e-5  # we do this weird multiplication to chop of small rounding errors
+#         dy = int(np.min(
+#             np.diff(np.unique(Y))) * 1e5) * 1e-5  # we do this weird multiplication to chop of small rounding errors
+#
+#         xmin, xmax = np.min(X), np.max(Y)
+#         ymin, ymax = np.min(Y), np.max(Y)
+#
+#         # these are all the x and y positons that we expect
+#         Xo, Yo = np.meshgrid(np.arange(xmin, xmax, dx), np.arange(ymin, ymax, dy))
+#
+#         # fill in the rows where the data is missing (values are basically all NaN except for the position xy)
+#         for xo, yo in zip(Xo.flatten(), Yo.flatten()):
+#             if len(data[(data['x'] == xo) & (data['y'] == yo)]) == 0:
+#                 data = data.append(pd.DataFrame.from_records({'x': [xo], 'y': [yo]}, index=[len(data)]))
+#
+#     return data
 
 
 
 def esr_2D_map_ring_scan(particle_radius=30, nv_radius=70, nv_x=0, nv_y=0, theta_mag=0, phi_mag=45,
                     dipole_height=80, shot_noise=0, linewidth=1e7, n_angle=51, n_freq=501, f_min=2.65e9, f_max=3.15e9,
                     avrg_count_rate=1,MW_rabi=10,Dgs = 2.87,
-                    return_data=False, show_plot=True):
+                    return_data=False, show_plot=True, use_Pl=True):
     """
         simulates the data from a ring scan
         particle_radius: particle_radius in um
          dipole_height = height of the dipole in um
+
+         use_Pl: if True we calculate the photoluminescence if false the contrast (Warning this is outdated!!)
     """
     nv_po = np.array([nv_x, nv_y])  # center of ring where we measure the nvs
     angle = np.linspace(0, 360, n_angle)
@@ -436,20 +438,24 @@ def esr_2D_map_ring_scan(particle_radius=30, nv_radius=70, nv_x=0, nv_y=0, theta
     bfields = f.b_field_single_dipole(r, DipolePosition, m)
 
 
-    esr_contrast = nv.esr_contrast_ensemble(bfields, k_MW=MW_rabi, Dgs=Dgs)
+    rate_params = {
+            'beta': 1,
+            'kr' : 63.2,
+            'k47' : 10.8,
+            'k57' : 60.7,
+            'k71' : 0.8,
+            'k72' : 0.4,
+            'Des' : 1.42
+            }
 
-    esr_freq = nv.esr_frequencies_ensemble(bfields, Dgs=Dgs)
+    if use_Pl:
+        signal = nv.signal_photoluminescence(frequencies, bfields, MW_rabi=MW_rabi, Dgs=Dgs,
+                                   linewidth=linewidth, shot_noise=0, rate_params=rate_params)
 
-    signal = []
-    for fo, contrast in zip(esr_freq, esr_contrast):
-        signal.append(nv.esr_odmr_signal_ensemble(
-            frequencies,
-            fo.flatten(), contrast.flatten(),
-            avrg_count_rate,
-            linewidth=linewidth,
-            shot_noise=shot_noise)
-        )
-    signal = np.array(signal)
+    else:
+
+        signal = nv.signal_contrast(frequencies, bfields, MW_rabi=MW_rabi, Dgs=Dgs, avrg_count_rate=avrg_count_rate,
+                                   linewidth=linewidth, shot_noise=0)
 
     if show_plot:
         fig, ax = plt.subplots(1, 1, figsize=(6, 4))

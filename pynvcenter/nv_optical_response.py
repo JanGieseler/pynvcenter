@@ -5,6 +5,14 @@ from itertools import permutations
 
 from scipy.signal import find_peaks
 
+
+# some frequently used parameters
+_Des = 1.43
+_Dgs = 2.87
+
+
+# import
+
 # spin 1 matrices
 Sx = np.matrix([
     [0, -1j, -1j],
@@ -67,7 +75,7 @@ def projetion_matrix(theta, phi):
     return P
 
 
-def esr_frequencies(Bfield, gs=27.969, muB=1, hbar=1, Dgs=2.87):
+def esr_frequencies(Bfield, gs=27.969, muB=1, hbar=1, Dgs=_Dgs):
     """
     :param Bfield (in Tesla): magnetic field with components Bx, By, Bz in the NV frame: 1D-array of length 3 or 2D-array of dim Nx3
     :return:  matrix that gives the esr transition frequencies from diagonalizing the Hamiltonian with external magnetic field
@@ -102,7 +110,7 @@ def esr_frequencies(Bfield, gs=27.969, muB=1, hbar=1, Dgs=2.87):
     return esr*1e9
 
 
-def esr_frequencies_ensemble(B_lab, gs=27.969, muB=1, hbar=1, Dgs=2.87):
+def esr_frequencies_ensemble(B_lab, gs=27.969, muB=1, hbar=1, Dgs=_Dgs):
     """
     calculates the esr freq. for the four NV families for a given magnetic field in the lab frame
 
@@ -133,7 +141,7 @@ def esr_frequencies_ensemble(B_lab, gs=27.969, muB=1, hbar=1, Dgs=2.87):
     return np.moveaxis(f, 0, 1)
 
 
-def esr_contrast_ensemble(B_lab, k_MW=10, beta=1, gs=27.969, muB=1, hbar=1, Dgs=2.87):
+def esr_contrast_ensemble(B_lab, k_MW=10, beta=1, gs=27.969, muB=1, hbar=1, Dgs=_Dgs):
     """
     calculates the esr contrast for the four NV families for a given magnetic field in the lab frame
 
@@ -165,6 +173,39 @@ def esr_contrast_ensemble(B_lab, k_MW=10, beta=1, gs=27.969, muB=1, hbar=1, Dgs=
     # N is the number of NV families
     return np.moveaxis(C, 0, 1)
 
+
+def esr_PL_ensemble(B_lab, k_MW=10, beta=1, gs=27.969, muB=1, hbar=1, Dgs=_Dgs):
+    """
+    calculates the esr photoluminescence for the four NV families for a given magnetic field in the lab frame
+
+    B_lab: magnetic field in the lab frame (N x 3) matrix
+    k_MW: is the Rabi frequency applied to the ESR transition
+
+    returns the esr contrast for all 4 NV families as M x N array, where
+        M is the number of magnetic fields
+        N = 4 is the number of NV families
+    """
+
+    C = []
+    # get b field in cartesian coordinates
+
+    for i in range(4):
+        # get the off axis and on axis field for NV_i
+        BNV = B_fields_in_NV_frame(B_lab,i)
+        # calculate the ESR freq. for NV_i
+        # we just calculate the maximum contrast for each of the two transitsion and sum them up
+        # to get the spectrum, we just assume two Lorenzians
+        # An alternative approach would be to assume that the MW freqs. follow a Lorenzian and calculate the photoluminescence contrast for each MW freq.
+        Cm = photoluminescence(BNV, k12=k_MW, k13=0, beta=beta)
+        Cp = photoluminescence(BNV, k12=0, k13=k_MW, beta=beta)
+        Cb = photoluminescence(BNV, k12=0, k13=0, beta=beta)  # background
+
+        C.append(np.vstack([Cm, Cp, Cb]).T)
+
+    # rearrange so that we return a M x N x 3 array
+    # M is the number of magnetic fields
+    # N is the number of NV families
+    return np.moveaxis(C, 0, 1)
 
 def esr_connect(esr_freq):
     """
@@ -240,18 +281,13 @@ def esr_odmr_signal(f, co, c1, linewidth, fo, shot_noise=0):
     esr signal for a single nv transition
 
     :param f: in Hz (not angular freq)
-    :param co:
-    :param c1:
+    :param co: counts of background
+    :param c1: count on resonance
     :param linewidth: in Hz (not angular freq)
     :param fo: in Hz (not angular freq)
     :param shot_noise: if larger than 0, the number corresponds to the measurement time in milliseconds, if the count rate co, c1 are given in kCounts
     :return:
     """
-
-    wo = 2 * np.pi * fo
-    w = 2 * np.pi * f
-
-    linewidth =  2 * np.pi * linewidth
 
     if shot_noise>0:
         counts = np.random.poisson(lam=c1*shot_noise, size=len(f)) / shot_noise
@@ -259,7 +295,7 @@ def esr_odmr_signal(f, co, c1, linewidth, fo, shot_noise=0):
 
         counts = c1
 
-    signal = counts-(counts-co)*linewidth**2 / ( (w-wo)**2+linewidth**2 )
+    signal = counts-(counts-co)*lorenzian(f, linewidth, fo)
 
 
 
@@ -285,14 +321,35 @@ def esr_odmr_signal_ensemble(f, f_esr, contrast, avrg_count_rate=1, linewidth=1e
 
     return signal
 
-def hamiltonian_nv_spin1(Bfield, gs=27.969, muB=1, hbar=1, D=2.87):
+
+def esr_odmr_signal_ensemble_PL(f, f_esr, counts, count_back_ground=1, linewidth=1e7, shot_noise=0):
+    """
+    f = array of frequencies
+    f_esr = list type typically f length 8 that contains the 8 esr transition freqs.
+    counts = count on resonance
+    count_back_ground = background count (off-resonance)
+    linewidth = linewidth of esr (same for all transitions)
+    """
+
+    assert len(f_esr) == len(counts)  # fo, contrast should have the same length
+
+    signal = 0
+    for fo, c, cb in zip(f_esr, counts, count_back_ground):
+
+        signal += esr_odmr_signal(f, co=c, c1=cb, linewidth=linewidth, fo=fo, shot_noise=shot_noise)
+    signal /= len(f_esr)
+
+    return signal
+
+
+def hamiltonian_nv_spin1(Bfield, gs=27.969, muB=1, hbar=1, D=_Dgs):
     """
     The hamiltonian for a spin 1 system, this hamiltonian describes the NV gound state as well as the excited state
     :param Bfield: magnetic field in Tesla with components Bx, By, Bz: 1D-array of length 3 or 2D-array of dim Nx3
     :param gs: gyromagnetic ration (per Tesla)
     :param muB:
     :param hbar:
-    :param D: (2.87 for ground state, 1.42 for excited state) in GHz
+    :param D: (_Dgs for ground state, 1.42 for excited state) in GHz
     :return: the NV ground state hamiltonian
         3x3 matrix if input B-field is 1D-array
         Nx3x3 array if input B-field is 2D-array of length Nx3
@@ -316,9 +373,12 @@ def hamiltonian_nv_spin1(Bfield, gs=27.969, muB=1, hbar=1, D=2.87):
     return H
 
 
-def transition_rate_matrix(Bfield, k12=10, k13=0, beta=2, kr = 63.2, k47= 10.8, k57 = 60.7, k71 = 0.8, k72 = 0.4):
+def transition_rate_matrix(Bfield, k12=10, k13=0, beta=2, kr = 63.2, k47= 10.8, k57 = 60.7, k71 = 0.8, k72 = 0.4,
+                           Dgs=_Dgs, Des=_Des):
     """
     the transition matrix for reference see Tetienne et al. New Journal of Physics 14 (2012) 103033
+
+    Eq. 3 from Tetienne et al NJP 2012
 
     :param Bfield: magnetic field with components Bx, By, Bz: 1D-array of length 3 or 2D-array of dim Nx3
     :param k12: transition rate (Rabi frequency) between 0 and -1 state in MHz
@@ -355,7 +415,7 @@ def transition_rate_matrix(Bfield, k12=10, k13=0, beta=2, kr = 63.2, k47= 10.8, 
 
 
     def get_k(B):
-        U = np.array(coupling_matrix(B).H) # need to double check this here also double check if mathematica is correct!!
+        U = np.array(coupling_matrix(B, Dgs=Dgs, Des=Des).H) # need to double check this here also double check if mathematica is correct!!
 
         k = np.zeros([7,7])
 
@@ -373,8 +433,12 @@ def transition_rate_matrix(Bfield, k12=10, k13=0, beta=2, kr = 63.2, k47= 10.8, 
     return k
 
 
-def coupling_matrix(Bfield, gs=27.969, muB=1, hbar=1, Dgs=2.87, Des=1.42):
+def coupling_matrix(Bfield, gs=27.969, muB=1, hbar=1, Dgs=_Dgs, Des=_Des):
     """
+
+    calculates the coefficients alpha in Eq. 2 from Tetienne et al NJP 2012
+
+
     :param Bfield: magnetic field with components Bx, By, Bz: 1D-array of length 3 or 2D-array of dim Nx3
     :return: unitary matrix that diagonalizes the Hamiltonian with external magnetic field
         7x7 matrix if input B-field is 1D-array
@@ -419,6 +483,10 @@ def coupling_matrix(Bfield, gs=27.969, muB=1, hbar=1, Dgs=2.87, Des=1.42):
 def populations(transition_rates):
     """
     calculates the population by solving the rate equations for the transition rate matrix k
+
+
+
+
     :param transition_rates:
         2D array with dim MxM
         3D array with dim NxMxM
@@ -494,6 +562,8 @@ def get_ko(k12, k13, beta, kr = 63.2, k47= 10.8, k57 = 60.7, k71 = 0.8, k72 = 0.
 def photoluminescence_rate(transition_rates, populations):
     """
 
+    Eq. for R(B) right before Eq. 6 in Tetienne et al. NJP 2012
+
     :param transition_rates: transition rate matrix obtained from diagonalizing Hamiltonian
         7x7 matrix
         Nx7x7 array
@@ -557,7 +627,29 @@ def photoluminescence_contrast(Bfield, k12, k13, beta, kr=63.2, k47=10.8, k57=60
     return c
 
 
-def B_field_from_esr(fp, fn, D=2.8707e9, gamma=27.969e9, angular_freq=False, verbose=False):
+def photoluminescence(Bfield, k12, k13, beta, kr=63.2, k47=10.8, k57=60.7, k71=0.8, k72=0.4,Dgs=_Dgs, Des=_Des):
+    """
+
+    :param Bfield: magnetic field with components Bx, By, Bz: 1D-array of length 3 or 2D-array of dim Nx3
+    :param k12: transition rate (Rabi frequency) between 0 and -1 state in MHz
+    :param k13: transition rate (Rabi frequency) between 0 and +1 state in MHz
+    :param beta: optical pumping parameter
+    :return: photoluminescence in the same units as the rates k (typically MHz)
+    """
+
+    k_mw = transition_rate_matrix(Bfield, k12, k13, beta, kr=kr, k47=k47, k57=k57, k71=k71, k72=k72,Dgs=Dgs, Des=Des)
+
+    pop_mw = populations(k_mw)
+
+    pl_mw = photoluminescence_rate(k_mw, pop_mw)
+
+
+    if len(np.shape(pl_mw))==1:
+        pl_mw = np.array(pl_mw)
+
+    return pl_mw
+
+def B_field_from_esr(fp, fn, D=_Dgse9, gamma=27.969e9, angular_freq=False, verbose=False):
     """
     wp, wn: upper and lower esr frequency
     gamma: Gyromagnetic ratio (in GHz/Tesla)
@@ -1292,6 +1384,183 @@ def magnetic_moment_and_Br_from_fit(dp, a, r, mu0=4 * np.pi * 1e-7):
     m = 4 * np.pi / mu0 * r ** 3 * dp
     Br = m / V * mu0
     return m, Br
+
+
+def lorenzian(f, linewidth, fo):
+    """
+    lorenzian with peak amplitude = 1
+
+    :param f: in Hz (not angular freq)
+    :param linewidth: in Hz (not angular freq)
+    :param fo: in Hz (not angular freq)
+    :return:
+    """
+
+    wo = 2 * np.pi * fo
+    w = 2 * np.pi * f
+
+    linewidth =  2 * np.pi * linewidth
+
+
+    signal = linewidth**2 / ( (w-wo)**2+linewidth**2 )
+
+
+
+    return signal
+
+
+def signal_contrast(frequencies, bfields, MW_rabi, Dgs, avrg_count_rate, linewidth, shot_noise=0):
+    """
+
+    calculates the signal by first calculating the contrast and the freq.
+
+    Warning, this doesn't take into account the photoluminescence suppression.
+
+    As a result, this function if probbably not physical
+
+
+    :param frequencies:
+    :param bfields:
+    :param MW_rabi:
+    :param Dgs:
+    :param avrg_count_rate:
+    :param linewidth:
+    :param shot_noise:
+    :return:
+    """
+    esr_contrast = esr_contrast_ensemble(bfields, k_MW=MW_rabi, Dgs=Dgs)
+
+    esr_freq = esr_frequencies_ensemble(bfields, Dgs=Dgs)
+
+    signal = []
+    for fo, contrast in zip(esr_freq, esr_contrast):
+        signal.append(esr_odmr_signal_ensemble(
+            frequencies,
+            fo.flatten(), contrast.flatten(),
+            avrg_count_rate,
+            linewidth=linewidth,
+            shot_noise=shot_noise)
+        )
+    signal = np.array(signal)
+
+    return signal
+
+
+def signal_photoluminescence_2(frequencies, B_lab, MW_rabi, Dgs=_Dgs, linewidth=10e6, shot_noise=0, rate_params=None):
+    """
+    calculates the photoluminescence signal
+
+    CALCULATE THE PL FOR EACH RABI FREQUENCY
+
+    currently quite slow because of the many loops!!!
+
+    :param frequencies:
+    :param B_lab:
+    :param MW_rabi:
+    :param Dgs:
+    :param linewidth:
+    :param shot_noise:
+
+    :param rate_params:
+
+
+
+    :return:
+    """
+
+    if rate_params is None:
+        rate_params = {
+            'beta' : 1,
+            'kr' : 63.2,
+            'k47' : 10.8,
+            'k57' : 60.7,
+            'k71' : 0.8,
+            'k72' : 0.4,
+            'Dgs' : Dgs,
+            'Des' : _Des
+            }
+
+
+    esr_freqs = esr_frequencies_ensemble(B_lab)  # find the transitions for all 4 families
+
+    signals = []
+    for esr_freq, bfield in zip(esr_freqs, B_lab):
+        signal = []
+        for i, fo in enumerate(esr_freq):
+            # get the off axis and on axis field for NV_i
+            BNV = B_fields_in_NV_frame(bfield, i)
+
+            k12 = MW_rabi * lorenzian(frequencies, linewidth=linewidth, fo=fo[0])
+
+            PLm = [photoluminescence(np.expand_dims(BNV, 0), k, 0, **rate_params)[0]
+                   for k in k12]
+            k13 = MW_rabi * lorenzian(frequencies, linewidth=linewidth, fo=fo[1])
+
+            PLp = [photoluminescence(np.expand_dims(BNV, 0), k, 0, **rate_params)[0]
+                   for k in k13]
+            signal.append(np.array(PLm) + np.array(PLp))
+
+        signals.append(np.sum(signal, axis=0))
+    signals = np.array(signals)
+
+    return signals
+
+
+def signal_photoluminescence(frequencies, B_lab, MW_rabi, Dgs=_Dgs, linewidth=10e6, shot_noise=0, rate_params=None):
+    """
+    calculates the photoluminescence signal
+
+
+    :param frequencies:
+    :param B_lab:
+    :param MW_rabi:
+    :param Dgs:
+    :param linewidth:
+    :param shot_noise:
+
+    :param rate_params:
+
+
+
+    :return:
+    """
+
+
+    if rate_params is None:
+        rate_params = {
+            'beta' : 1,
+            'kr' : 63.2,
+            'k47' : 10.8,
+            'k57' : 60.7,
+            'k71' : 0.8,
+            'k72' : 0.4,
+            'Dgs' : Dgs,
+            'Des' : _Des
+            }
+
+
+    esr_freqs = esr_frequencies_ensemble(B_lab)  # find the transitions for all 4 families
+
+    esr_PL = esr_PL_ensemble(B_lab, k_MW=MW_rabi, Dgs=Dgs)
+
+    #  M x N x 3 array
+
+    signal = []
+    for fo, PL in zip(esr_freqs, esr_PL):
+
+        background_pl = np.vstack([PL[:,2],PL[:,2]]).T
+
+        signal.append(esr_odmr_signal_ensemble_PL(
+            frequencies,
+            fo.flatten(), PL[:,0:2].flatten(),
+            background_pl.flatten(),
+            linewidth=linewidth,
+            shot_noise=shot_noise)
+        )
+    signal = np.array(signal)
+
+    return signal
+
 
 
 if __name__ == '__main__':
