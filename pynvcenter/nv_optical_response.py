@@ -649,7 +649,7 @@ def photoluminescence(Bfield, k12, k13, beta, kr=63.2, k47=10.8, k57=60.7, k71=0
 
     return pl_mw
 
-def B_field_from_esr(fp, fn, D=_Dgse9, gamma=27.969e9, angular_freq=False, verbose=False):
+def B_field_from_esr(fp, fn, D=_Dgs*1e9, gamma=27.969e9, angular_freq=False, verbose=False):
     """
     wp, wn: upper and lower esr frequency
     gamma: Gyromagnetic ratio (in GHz/Tesla)

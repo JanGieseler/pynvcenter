@@ -35,7 +35,7 @@ def create_image(xo, yo, plot_img=False, particle_radius=20, nv_radius=70, theta
                  n_angle=60, n_freq=300,
                  f_min=2.65e9, f_max=3.15e9,
                  avrg_count_rate=100,
-                 MW_rabi = 10, Dgs=2.87, use_Pl=True
+                 MW_rabi = 10, Dgs=2.87, use_Pl=True, return_esr_freqs=False
                  ):
     """
     xo, yo center of the circle
@@ -47,7 +47,7 @@ def create_image(xo, yo, plot_img=False, particle_radius=20, nv_radius=70, theta
                                               linewidth=linewidth, n_angle=n_angle, n_freq=n_freq,
                                               f_min=f_min, f_max=f_max, avrg_count_rate=avrg_count_rate,
                                               MW_rabi=MW_rabi, Dgs=Dgs,
-                                              return_data=True, show_plot=plot_img, use_Pl=use_Pl)
+                                              return_data=True, show_plot=plot_img, use_Pl=use_Pl, return_esr_freqs=return_esr_freqs)
 
     return signal
 

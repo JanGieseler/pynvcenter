@@ -403,7 +403,7 @@ def calc_max_gradient(p, nv_id, n, max_broadening, max_off_axis_field, phi_diamo
 def esr_2D_map_ring_scan(particle_radius=30, nv_radius=70, nv_x=0, nv_y=0, theta_mag=0, phi_mag=45,
                     dipole_height=80, shot_noise=0, linewidth=1e7, n_angle=51, n_freq=501, f_min=2.65e9, f_max=3.15e9,
                     avrg_count_rate=1,MW_rabi=10,Dgs = 2.87,
-                    return_data=False, show_plot=True, use_Pl=True):
+                    return_data=False, show_plot=True, use_Pl=True, return_esr_freqs=False):
     """
         simulates the data from a ring scan
         particle_radius: particle_radius in um
@@ -434,7 +434,7 @@ def esr_2D_map_ring_scan(particle_radius=30, nv_radius=70, nv_x=0, nv_y=0, theta
     pm = np.pi / 180 * phi_mag
     m = dipole_strength * np.array([np.cos(pm) * np.sin(tm), np.sin(pm) * np.sin(tm), np.cos(tm)])
 
-    # calc field
+    # calc field in lab frame
     bfields = f.b_field_single_dipole(r, DipolePosition, m)
 
 
@@ -457,6 +457,9 @@ def esr_2D_map_ring_scan(particle_radius=30, nv_radius=70, nv_x=0, nv_y=0, theta
         signal = nv.signal_contrast(frequencies, bfields, MW_rabi=MW_rabi, Dgs=Dgs, avrg_count_rate=avrg_count_rate,
                                    linewidth=linewidth, shot_noise=0)
 
+
+
+
     if show_plot:
         fig, ax = plt.subplots(1, 1, figsize=(6, 4))
         ax.pcolor(frequencies, angle, signal)
@@ -466,8 +469,13 @@ def esr_2D_map_ring_scan(particle_radius=30, nv_radius=70, nv_x=0, nv_y=0, theta
         ax.set_title('theta = {:0.0f}, phi={:0.0f}'.format(theta_mag, phi_mag))
         plt.tight_layout()
 
+
     if return_data:
-        return signal
+        if return_esr_freqs:
+            esr_freqs = nv.esr_frequencies_ensemble(bfields)
+            return signal, esr_freqs
+        else:
+            return signal
 
 if __name__ == '__main__':
 
