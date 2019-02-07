@@ -41,7 +41,7 @@ def create_image(xo, yo, plot_img=False, particle_radius=20, nv_radius=70, theta
     xo, yo center of the circle
     """
 
-    signal = nv_analysis.esr_2D_map_ring_scan(nv_x=xo, nv_y=yo,
+    signal = nv_analysis.esr_ring_scan_2D_map(nv_x=xo, nv_y=yo,
                                               particle_radius=particle_radius, nv_radius=nv_radius, theta_mag=theta_mag,
                                               phi_mag=phi_mag, dipole_height=dipole_height, shot_noise=shot_noise,
                                               linewidth=linewidth, n_angle=n_angle, n_freq=n_freq,
@@ -49,7 +49,11 @@ def create_image(xo, yo, plot_img=False, particle_radius=20, nv_radius=70, theta
                                               MW_rabi=MW_rabi, Dgs=Dgs,
                                               return_data=True, show_plot=plot_img, use_Pl=use_Pl, return_esr_freqs=return_esr_freqs)
 
-    return signal
+    if return_esr_freqs:
+        signal, esr_freqs = signal
+        return signal, esr_freqs
+    else:
+        return signal
 
 
 def worker_function(parameters, pbar=None):
@@ -59,7 +63,7 @@ def worker_function(parameters, pbar=None):
     return img  # return the image
 
 
-def generate_data(n_data, parameters=None, n_jobs=2):
+def generate_data(n_data, parameters=None, n_jobs=2, return_esr_freqs=False):
 
     """
 
@@ -86,39 +90,23 @@ def generate_data(n_data, parameters=None, n_jobs=2):
 
     assert positions is not None, 'at least one random variable required (one element of parameters should be a tupple)'
 
-    # if 'xo' not in random_labels:
-    #     del positions['xo']
-    # if 'yo' not in random_labels:
-    #     del positions['yo']
-    # if 'dipole_height' in random_labels:
-    #     positions['dipole_height'] = 20 * (np.random.random((n_data))) + 60
-    # if 'theta_mag' in random_labels:
-    #     positions['theta_mag'] = 90 * (np.random.random((n_data)))
-    # if 'phi_mag' in random_labels:
-    #     positions['phi_mag'] = 90 * (np.random.random((n_data)))
-    # if 'particle_radius' in random_labels:
-    #     positions['particle_radius'] = 2 * (np.random.random((n_data))) + 20
-    # if 'nv_radius' in random_labels:
-    #     positions['nv_radius'] = 3 * (np.random.random((n_data))) + 70
-
     X = Parallel(n_jobs=n_jobs, backend='multiprocessing')(
-        delayed(worker_function)({**parameters, **positions.iloc[i].to_dict()})
+        delayed(worker_function)({**parameters, **positions.iloc[i].to_dict(), 'return_esr_freqs':return_esr_freqs})
         for i in tqdm(range(len(positions))))
+
+    if return_esr_freqs:
+        Y_esr = np.array([elem[1] for elem in X])
+        X = [elem[0] for elem in X]
     X = np.array(X, dtype=np.float16)
 
     Y = positions.values
 
     labels = positions.columns
 
-    #     x_scaler = MinMaxScaler()
-    #     # Xs = scaler.fit_transform(X.reshape(len(X), -1).astype(np.float32))
-    #     x_scaler.fit(np.expand_dims(X.flatten().astype(np.float32), axis=1))  # flatten the array so that min_max scaling over full data and not for each feature (pixel)
-
-    #     y_scaler = MinMaxScaler()
-    #     y_scaler.fit(Y)
-
-    #     {'X':X, 'Y' :Y, 'labels':labels, 'y_scaler':y_scaler, 'x_scaler':x_scaler}
-    return {'X': X, 'Y': Y, 'labels': labels}
+    if return_esr_freqs:
+        return {'X': X, 'Y': Y, 'labels': labels, 'Y_esr': Y_esr}
+    else:
+        return {'X': X, 'Y': Y, 'labels': labels}
 
 
 def esr_preprocessing(X, reference_level=1):

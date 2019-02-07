@@ -2,6 +2,8 @@
 
 
 from . import fields as f
+
+from scipy.optimize import minimize
 from . import nv_optical_response as nv
 from . import fields_plot as fp
 import numpy as np
@@ -367,43 +369,10 @@ def calc_max_gradient(p, nv_id, n, max_broadening, max_off_axis_field, phi_diamo
     return gradient
 
 
-# def fill_in_missing_xy(data):
-#     """
-#     data is a pandas data set with colums 'x' and 'y'.
-#     Assuming that the x and y values are on a grid will fill in the missing rows
-#
-#     :returns complete data set
-#     """
-#
-#     Nx, Ny = len(np.unique(X)), len(np.unique(Y))
-#
-#     if len(data) < Nx * Ny:
-#         # fill in missing elements
-#
-#         dx = int(np.min(
-#             np.diff(np.unique(X))) * 1e5) * 1e-5  # we do this weird multiplication to chop of small rounding errors
-#         dy = int(np.min(
-#             np.diff(np.unique(Y))) * 1e5) * 1e-5  # we do this weird multiplication to chop of small rounding errors
-#
-#         xmin, xmax = np.min(X), np.max(Y)
-#         ymin, ymax = np.min(Y), np.max(Y)
-#
-#         # these are all the x and y positons that we expect
-#         Xo, Yo = np.meshgrid(np.arange(xmin, xmax, dx), np.arange(ymin, ymax, dy))
-#
-#         # fill in the rows where the data is missing (values are basically all NaN except for the position xy)
-#         for xo, yo in zip(Xo.flatten(), Yo.flatten()):
-#             if len(data[(data['x'] == xo) & (data['y'] == yo)]) == 0:
-#                 data = data.append(pd.DataFrame.from_records({'x': [xo], 'y': [yo]}, index=[len(data)]))
-#
-#     return data
-
-
-
-def esr_2D_map_ring_scan(particle_radius=30, nv_radius=70, nv_x=0, nv_y=0, theta_mag=0, phi_mag=45,
-                    dipole_height=80, shot_noise=0, linewidth=1e7, n_angle=51, n_freq=501, f_min=2.65e9, f_max=3.15e9,
-                    avrg_count_rate=1,MW_rabi=10,Dgs = 2.87,
-                    return_data=False, show_plot=True, use_Pl=True, return_esr_freqs=False):
+def esr_ring_scan_2D_map(particle_radius=30, nv_radius=70, nv_x=0, nv_y=0, theta_mag=0, phi_mag=45,
+                         dipole_height=80, shot_noise=0, linewidth=1e7, n_angle=51, n_freq=501, f_min=2.65e9, f_max=3.15e9,
+                         avrg_count_rate=1, MW_rabi=10, Dgs = 2.87,
+                         return_data=False, show_plot=True, use_Pl=True, return_esr_freqs=False):
     """
         simulates the data from a ring scan
         particle_radius: particle_radius in um
@@ -476,6 +445,155 @@ def esr_2D_map_ring_scan(particle_radius=30, nv_radius=70, nv_x=0, nv_y=0, theta
             return signal, esr_freqs
         else:
             return signal
+
+
+def esr_ring_scan_freqs(angle, particle_radius=30, nv_radius=70, nv_x=0, nv_y=0, theta_mag=0, phi_mag=45,
+                        dipole_height=80):
+    """
+    calcuate the esr frequencies form a magnetic dipole for NVs located on a ring at angles `angles`
+
+    particle_radius: particle_radius in um
+    dipole_height = height of the dipole in um
+
+    """
+    nv_po = np.array([nv_x, nv_y])  # center of ring where we measure the nvs
+
+    Br = 0.1  # surface field of magnet in Tesla
+
+    mu0 = 4 * np.pi * 1e-7  # T m /A
+
+    dipole_strength = 4 * np.pi / 3 * (particle_radius) ** 3 / mu0
+
+    # positions of NV centers
+    nv_pos = np.array([nv_radius * np.cos(angle / 180 * np.pi) + nv_po[0],
+                       nv_radius * np.sin(angle / 180 * np.pi) + nv_po[1]]).T
+
+    # get physical units
+    r = np.hstack([nv_pos, np.zeros([len(nv_pos), 1])])  # nvs are assumed to be in the z=0 plane
+    DipolePosition = np.array(
+        [0, 0, -dipole_height])  # position of dipole is at -dipole_position in z-direction and 0,0 in xy
+    tm = np.pi / 180 * theta_mag
+    pm = np.pi / 180 * phi_mag
+
+    m = dipole_strength * np.array([np.cos(pm) * np.sin(tm), np.sin(pm) * np.sin(tm), np.cos(tm)])
+
+    # calc field in lab frame
+    bfields = f.b_field_single_dipole(r, DipolePosition, m)
+
+    esr_freqs = nv.esr_frequencies_ensemble(bfields)
+
+    return esr_freqs
+
+
+def fit_arc(angles, data, initial_guess, Do=2.87, verbose=True):
+    """
+
+    fit  measured frequencies `data` to esr frequencies calculated form a magnetic dipole with parameters near `initial_guess`
+    for NVs located on a ring at angles `angles`
+
+
+    angles/data: a vector of length N or a list of vectors each of length Ni
+    initial_guess: dictionary where values are either single values or a list / tupple of values
+    in the former case the parameter is not constraint, in the latter, the first value is the mean and the second the range of the bound
+
+    """
+
+    assert np.shape(angles) == np.shape(data)
+    assert type(initial_guess) is dict
+
+    bounds = [(v[0] - v[1] / 2, v[0] + v[1] / 2) if type(v) in (tuple, list) else (None, None) for k, v in
+              initial_guess.items()]
+
+    param_init = [v[0] if type(v) in (tuple, list) else v for k, v in initial_guess.items()]
+
+    # figure out if we recieved just a single set or several datasets
+    if len(np.shape(data)) == 1 and len(np.shape(data[0])) == 0:
+        is_single = True
+    else:
+        is_single = False
+
+    if verbose:
+        print('is single:', is_single)
+
+    # from now on we treat all the cases as a list of datasets
+    if is_single:
+        angles = [angles]
+        data = [data]
+
+    def loss(params):
+
+        err, _, _ = loss_arcs({k: v for k, v in zip(initial_guess.keys(), params)}, angles, data)
+
+        return np.sum(err)
+
+    return minimize(loss, param_init, bounds=bounds)
+
+
+def loss_arcs(params, angles, data):
+    """
+
+    calculate the loss between esr frequencies calculated form a magnetic dipole with parameters `params`
+    for NVs located on a ring at angles `angles` and measured frequencies `data`
+
+
+    params: magnet parameters as dictionary
+    angles: list of list / vector containing the anges of the arc
+    data: list of list / vector containing the measured esr frequencies for each angle
+
+
+    returns:
+        err: error each element in the angles/data lists
+        freqs: the esr freq predicted by the model
+        ids_of_detected_esrs: the ids of the NV families corresponding to each element
+
+    """
+
+    for a, d in zip(angles, data):
+        assert len(a) == len(d)
+
+    # calculate the esr freq for current magnet parameters
+    esr_freqs = [esr_ring_scan_freqs(_angles, **params)[:, :, 1] * 1e-9 for _angles in angles]
+
+    # concat the data four time so that we can compare it with each ESR line
+    esr_data = [np.tile(_data, 4).reshape(-1, len(_data)).T for _data in data]
+
+    ids_of_detected_esrs = []
+    err = []
+    freqs = []
+
+    for _angles, _esr, _data in zip(angles, esr_freqs, esr_data):
+        freq_diff = ((_data - _esr) ** 2)  # squared difference between the predicted esrs (_esr) and the data (y)
+
+        # only use the lines  that we haven't used yet
+        freq_diff = freq_diff
+        _err = np.sum(freq_diff, axis=0)
+        # get the smallest error considering only the lines that have not been used yet
+        idx_err = list(_err).index(_err[[i for i in range(4) if i not in ids_of_detected_esrs]].min())
+
+        ids_of_detected_esrs.append(idx_err)
+
+        err.append(_err[idx_err])
+        freqs.append(_esr[:, idx_err])
+
+    # consistency check
+    for a, f in zip(angles, freqs):
+        assert len(a) == len(f)
+
+    return err, freqs, ids_of_detected_esrs
+
+
+#     err_of_combination = []
+#     for _combination in combinations(range(4),len(angles)):
+
+#         print('>>>>>> combination',_combination)
+
+#         XXerr = 0
+
+
+#         print('>>>>>> err', XXerr)
+# #                 err.append(freq_diff[i for i in range(4) if i not in detected_ids].min())
+# #                 freqs.append(y[freq_diff.argmin()])
+# err, freqs, ids_of_detected_esrs = loss_arcs(magnet_params, angles, x)
 
 if __name__ == '__main__':
 
