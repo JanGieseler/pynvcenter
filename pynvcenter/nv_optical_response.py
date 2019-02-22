@@ -689,7 +689,7 @@ def B_field_from_esr(fp, fn, D=_Dgs*1e9, gamma=27.969e9, angular_freq=False, ver
 
 def B_field_from_esr_ensemble(frequencies, angular_freq=False):
     """
-    calculates the magnetitc field components from the NV ESR frequencies
+    calculates the magnetic field components from the NV ESR frequencies
 
     frequencies (2 x n matrix or 2xn vector): upper and lower esr frequency for n peaks
     angular_freq: frequencies are the angular frequencies (default = False)
@@ -703,6 +703,7 @@ def B_field_from_esr_ensemble(frequencies, angular_freq=False):
         frequencies = np.reshape(frequencies, [2, len(frequencies) / 2])
 
     B = []
+
     for f in frequencies:
         B.append(B_field_from_esr(*f))
 
@@ -1374,16 +1375,6 @@ def connect_esr_frequencies(esr_data, verbose=False):
     return np.array(esr_data_sorted)
 
 
-def magnetic_moment_and_Br_from_fit(dp, a, r, mu0=4 * np.pi * 1e-7):
-    """
-    calculate the magentic moment and magnetic surface field from the fit parameter dp
-    a: radius of magnet
-    r: distance between NV circle and center of magnet
-    """
-    V = 4 * np.pi / 3 * a ** 3
-    m = 4 * np.pi / mu0 * r ** 3 * dp
-    Br = m / V * mu0
-    return m, Br
 
 
 def lorenzian(f, linewidth, fo):

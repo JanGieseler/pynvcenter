@@ -8,6 +8,7 @@ from tqdm import tqdm
 from sklearn.preprocessing import MinMaxScaler
 
 from sklearn.model_selection import train_test_split
+import pynvcenter.nv_optical_response as nv
 
 magnet_parameters = {
     'particle_radius': 19,
@@ -34,8 +35,8 @@ def create_image(xo, yo, plot_img=False, particle_radius=20, nv_radius=70, theta
                  dipole_height=80, shot_noise=0, linewidth=1e7,
                  n_angle=60, n_freq=300,
                  f_min=2.65e9, f_max=3.15e9,
-                 avrg_count_rate=100,
-                 MW_rabi = 10, Dgs=2.87, use_Pl=True, return_esr_freqs=False
+                 avrg_count_rate=100,Br=0.1,
+                 MW_rabi = 10, Dgs=nv._Dgs, use_Pl=True, return_esr_freqs=False
                  ):
     """
     xo, yo center of the circle
@@ -46,7 +47,7 @@ def create_image(xo, yo, plot_img=False, particle_radius=20, nv_radius=70, theta
                                               phi_mag=phi_mag, dipole_height=dipole_height, shot_noise=shot_noise,
                                               linewidth=linewidth, n_angle=n_angle, n_freq=n_freq,
                                               f_min=f_min, f_max=f_max, avrg_count_rate=avrg_count_rate,
-                                              MW_rabi=MW_rabi, Dgs=Dgs,
+                                              MW_rabi=MW_rabi, Dgs=Dgs,Br=Br,
                                               return_data=True, show_plot=plot_img, use_Pl=use_Pl, return_esr_freqs=return_esr_freqs)
 
     if return_esr_freqs:
@@ -190,11 +191,10 @@ class CustomScalerY():
     def inverse_transform(self, Y, inplace=True):
 
         if inplace:
-            # now normlize the Y values
+            # now normalize the Y values
             for k, v in self.norm_dict.items():
                 column_id = [l == k for l in self.labels]
-                Y[:, column_id] = v[1] * Y[:, column_id] + v[
-                    0]  # v[0]=min,  v[1]=range, i.e. normalize such that values are between 0 and 1
+                Y[:, column_id] = v[1] * Y[:, column_id] + v[0]  # v[0]=min,  v[1]=range, i.e. normalize such that values are between 0 and 1
 
             return Y
         else:
