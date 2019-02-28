@@ -32,7 +32,7 @@ label_map = {'xo': 'x', 'yo': 'y', 'dipole_height': 'z', 'theta_mag': 't', 'phi_
 
 
 def create_image(xo, yo, plot_img=False, particle_radius=20, nv_radius=70, theta_mag=0, phi_mag=45,
-                 dipole_height=80, shot_noise=0, linewidth=1e7,
+                 dipole_height=80, shot_noise=0, linewidth=1e7,phi_r=0,
                  n_angle=60, n_freq=300,
                  f_min=2.65e9, f_max=3.15e9,
                  avrg_count_rate=100,Br=0.1,
@@ -45,7 +45,7 @@ def create_image(xo, yo, plot_img=False, particle_radius=20, nv_radius=70, theta
     signal = nv_analysis.esr_ring_scan_2D_map(nv_x=xo, nv_y=yo,
                                               particle_radius=particle_radius, nv_radius=nv_radius, theta_mag=theta_mag,
                                               phi_mag=phi_mag, dipole_height=dipole_height, shot_noise=shot_noise,
-                                              linewidth=linewidth, n_angle=n_angle, n_freq=n_freq,
+                                              linewidth=linewidth, phi_r=phi_r,n_angle=n_angle, n_freq=n_freq,
                                               f_min=f_min, f_max=f_max, avrg_count_rate=avrg_count_rate,
                                               MW_rabi=MW_rabi, Dgs=Dgs,Br=Br,
                                               return_data=True, show_plot=plot_img, use_Pl=use_Pl, return_esr_freqs=return_esr_freqs)

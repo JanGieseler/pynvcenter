@@ -552,12 +552,15 @@ def fit_magnetic_field_ensemble(esr_data, initial_guess, Dgs=nv._Dgs):
 
 def get_magnetic_field_ensemble(data, initial_guess, vary_theta=range(0, 100, 15), propagate_initial_guess=True):
     """
+
+    get the B field from the esr frequencies
+
     data: esr ensemble data in GHz shape (N, 4, 2)
     initial_guess: initial guess for B field in cartesian coordinates (Lab frame) see also `propagate_initial_guess`
 
     vary_theta: if not None is an array of theta values that is used
         in a grid search for the initial conditions
-    propagate_initial_guess: if true we assume that the data is continious
+    propagate_initial_guess: if true we assume that the data is continuous
         and we use the previous result as initial condition for the next data point
 
 
